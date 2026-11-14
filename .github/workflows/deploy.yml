@@ -20,7 +20,7 @@ jobs:
       - run: npm run build
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::075832309477:role/github-deploy-audio-tools
+          role-to-assume: arn:aws:iam::075832309477:role/github-cicd
           aws-region: ap-south-1
       - run: aws s3 sync dist/ s3://audio-tools-site-642 --delete
       - run: aws cloudfront create-invalidation --distribution-id E3OLQQBTB1TA5O --paths "/*"

@@ -11,6 +11,7 @@ app.innerHTML = `
   <p id="sel"></p>
   <button id="play" disabled>Play selection</button>
   <button id="stop" disabled>Stop</button>
+  <button id="export-wav" disabled>Download WAV</button>
 `
 
 const fileInput = document.querySelector<HTMLInputElement>('#file')!
@@ -19,6 +20,7 @@ const sel = document.querySelector<HTMLParagraphElement>('#sel')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
 const stopBtn = document.querySelector<HTMLButtonElement>('#stop')!
+const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
 const g = canvas.getContext('2d')!
 
 const audioCtx = new AudioContext()
@@ -44,6 +46,7 @@ fileInput.addEventListener('change', async () => {
     end = 1
     playBtn.disabled = false
     stopBtn.disabled = false
+    wavBtn.disabled = false
     render()
   } catch {
     info.textContent = 'Could not decode this file.'
@@ -147,4 +150,62 @@ stopBtn.addEventListener('click', stop)
 function stop() {
   source?.stop()
   source = null
+}
+
+wavBtn.addEventListener('click', () => {
+  if (!audioBuffer) return
+  const blob = encodeWav(audioBuffer, start, end)
+  download(blob, 'trimmed.wav')
+})
+
+function encodeWav(buf: AudioBuffer, startFrac: number, endFrac: number): Blob {
+  const ch = buf.numberOfChannels
+  const rate = buf.sampleRate
+  const from = Math.floor(startFrac * buf.length)
+  const to = Math.floor(endFrac * buf.length)
+  const frames = to - from
+
+  const bytesPerSample = 2 // 16-bit PCM
+  const dataSize = frames * ch * bytesPerSample
+  const view = new DataView(new ArrayBuffer(44 + dataSize))
+
+  const str = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+  }
+
+  // RIFF/WAVE header
+  str(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)       // file size minus 8
+  str(8, 'WAVE')
+  str(12, 'fmt ')
+  view.setUint32(16, 16, true)                 // fmt chunk size
+  view.setUint16(20, 1, true)                  // format 1 = PCM
+  view.setUint16(22, ch, true)
+  view.setUint32(24, rate, true)
+  view.setUint32(28, rate * ch * bytesPerSample, true) // byte rate
+  view.setUint16(32, ch * bytesPerSample, true)        // block align
+  view.setUint16(34, 16, true)                 // bits per sample
+  str(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  // Samples: interleave channels (L R L R ...), float -1..1 to int16
+  const channels = Array.from({ length: ch }, (_, c) => buf.getChannelData(c))
+  let offset = 44
+  for (let i = from; i < to; i++) {
+    for (let c = 0; c < ch; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]))
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+      offset += 2
+    }
+  }
+  return new Blob([view], { type: 'audio/wav' })
+}
+
+function download(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }

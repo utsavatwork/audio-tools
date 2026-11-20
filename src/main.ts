@@ -1,4 +1,5 @@
 import "./style.css";
+import { Mp3Encoder } from '@breezystack/lamejs'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
@@ -12,6 +13,13 @@ app.innerHTML = `
   <button id="play" disabled>Play selection</button>
   <button id="stop" disabled>Stop</button>
   <button id="export-wav" disabled>Download WAV</button>
+  <select id="kbps">
+    <option value="128">128 kbps</option>
+    <option value="192" selected>192 kbps</option>
+    <option value="320">320 kbps</option>
+  </select>
+  <button id="export-mp3" disabled>Download MP3</button>
+  <span id="status"></span>
 `
 
 const fileInput = document.querySelector<HTMLInputElement>('#file')!
@@ -21,6 +29,9 @@ const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
 const stopBtn = document.querySelector<HTMLButtonElement>('#stop')!
 const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
+const mp3Btn = document.querySelector<HTMLButtonElement>('#export-mp3')!
+const kbpsSel = document.querySelector<HTMLSelectElement>('#kbps')!
+const status = document.querySelector<HTMLSpanElement>('#status')!
 const g = canvas.getContext('2d')!
 
 const audioCtx = new AudioContext()
@@ -47,6 +58,7 @@ fileInput.addEventListener('change', async () => {
     playBtn.disabled = false
     stopBtn.disabled = false
     wavBtn.disabled = false
+    mp3Btn.disabled = false
     render()
   } catch {
     info.textContent = 'Could not decode this file.'
@@ -208,4 +220,62 @@ function download(blob: Blob, filename: string) {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+mp3Btn.addEventListener('click', async () => {
+  if (!audioBuffer) return
+  mp3Btn.disabled = true
+  try {
+    const blob = await encodeMp3(
+      audioBuffer, start, end, Number(kbpsSel.value),
+      pct => { status.textContent = `Encoding ${pct}%` }
+    )
+    status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+    download(blob, 'trimmed.mp3')
+  } catch {
+    status.textContent = 'Encoding failed.'
+  } finally {
+    mp3Btn.disabled = false
+  }
+})
+
+function toInt16(f: Float32Array, from: number, to: number): Int16Array {
+  const out = new Int16Array(to - from)
+  for (let i = from; i < to; i++) {
+    const s = Math.max(-1, Math.min(1, f[i]))
+    out[i - from] = s < 0 ? s * 0x8000 : s * 0x7fff
+  }
+  return out
+}
+
+async function encodeMp3(
+  buf: AudioBuffer, startFrac: number, endFrac: number,
+  kbps: number, onProgress: (pct: number) => void
+): Promise<Blob> {
+  const from = Math.floor(startFrac * buf.length)
+  const to = Math.floor(endFrac * buf.length)
+  const ch = Math.min(2, buf.numberOfChannels)    // lamejs handles mono or stereo
+  const encoder = new Mp3Encoder(ch, buf.sampleRate, kbps)
+
+  const left = buf.getChannelData(0)
+  const right = ch === 2 ? buf.getChannelData(1) : null
+
+  const CHUNK = 1152 * 10                          // 1152 = samples per MP3 frame
+  const parts: Uint8Array[] = []
+
+  for (let i = from; i < to; i += CHUNK) {
+    const j = Math.min(i + CHUNK, to)
+    const l = toInt16(left, i, j)
+    const out = right
+      ? encoder.encodeBuffer(l, toInt16(right, i, j))
+      : encoder.encodeBuffer(l)
+    if (out.length) parts.push(out)
+
+    onProgress(Math.round(((j - from) / (to - from)) * 100))
+    await new Promise(r => setTimeout(r))          // yield so the UI can repaint
+  }
+
+  const tail = encoder.flush()
+  if (tail.length) parts.push(tail)
+  return new Blob(parts as BlobPart[], { type: 'audio/mpeg' })
 }

@@ -4,22 +4,33 @@ import { Mp3Encoder } from '@breezystack/lamejs'
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
   <h1>MP3 Playground</h1>
-  <p>Trim audio right in your browser. Your files never leave your device.</p>
-  <input type="file" id="file" accept="audio/*,video/*" />
+  <p class="sub">Trim audio in your browser. Your files never leave your device.</p>
+
+  <label id="drop" class="drop">
+    <input type="file" id="file" accept="audio/*,video/*" hidden />
+    <span>Drop an audio or video file here, or <u>browse</u></span>
+  </label>
   <p id="info"></p>
-  <canvas id="wave" width="900" height="160"
-    style="width:100%;max-width:900px;touch-action:none;cursor:ew-resize"></canvas>
-  <p id="sel"></p>
-  <button id="play" disabled>Play selection</button>
-  <button id="stop" disabled>Stop</button>
-  <button id="export-wav" disabled>Download WAV</button>
-  <select id="kbps">
-    <option value="128">128 kbps</option>
-    <option value="192" selected>192 kbps</option>
-    <option value="320">320 kbps</option>
-  </select>
-  <button id="export-mp3" disabled>Download MP3</button>
-  <span id="status"></span>
+
+  <div id="editor" hidden>
+    <canvas id="wave" width="900" height="160"
+      style="touch-action:none;cursor:ew-resize"></canvas>
+    <p id="sel"></p>
+    <div class="row">
+      <button id="play">Play selection</button>
+      <button id="stop">Stop</button>
+    </div>
+    <div class="row">
+      <select id="kbps">
+        <option value="128">128 kbps</option>
+        <option value="192" selected>192 kbps</option>
+        <option value="320">320 kbps</option>
+      </select>
+      <button id="export-mp3">Download MP3</button>
+      <button id="export-wav">Download WAV</button>
+      <span id="status"></span>
+    </div>
+  </div>
 `
 
 const fileInput = document.querySelector<HTMLInputElement>('#file')!
@@ -32,6 +43,8 @@ const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
 const mp3Btn = document.querySelector<HTMLButtonElement>('#export-mp3')!
 const kbpsSel = document.querySelector<HTMLSelectElement>('#kbps')!
 const status = document.querySelector<HTMLSpanElement>('#status')!
+const drop = document.querySelector<HTMLLabelElement>('#drop')!
+const editor = document.querySelector<HTMLDivElement>('#editor')!
 const g = canvas.getContext('2d')!
 
 const audioCtx = new AudioContext()
@@ -43,9 +56,14 @@ let drag: 'start' | 'end' | 'new' | null = null
 let anchor = 0
 let source: AudioBufferSourceNode | null = null
 
-fileInput.addEventListener('change', async () => {
-  const file = fileInput.files?.[0]
-  if (!file) return
+const MAX_MB = 50
+
+async function loadFile(file: File) {
+  if (file.size > MAX_MB * 1024 * 1024) {
+    info.textContent = `File is too large (max ${MAX_MB} MB).`
+    return
+  }
+  stop()
   info.textContent = 'Decoding...'
   try {
     audioBuffer = await audioCtx.decodeAudioData(await file.arrayBuffer())
@@ -55,14 +73,26 @@ fileInput.addEventListener('change', async () => {
     peaks = computePeaks(audioBuffer)
     start = 0
     end = 1
-    playBtn.disabled = false
-    stopBtn.disabled = false
-    wavBtn.disabled = false
-    mp3Btn.disabled = false
+    status.textContent = ''
+    editor.hidden = false
     render()
   } catch {
-    info.textContent = 'Could not decode this file.'
+    info.textContent = "Couldn't read this file. Try an MP3, WAV, M4A, or MP4."
   }
+}
+
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files?.[0]
+  if (f) loadFile(f)
+})
+
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over') })
+drop.addEventListener('dragleave', () => drop.classList.remove('over'))
+drop.addEventListener('drop', e => {
+  e.preventDefault()
+  drop.classList.remove('over')
+  const f = e.dataTransfer?.files?.[0]
+  if (f) loadFile(f)
 })
 
 // Compute once: scanning millions of samples on every mouse move would lag

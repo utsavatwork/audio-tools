@@ -55,8 +55,22 @@ let end = 1
 let drag: 'start' | 'end' | 'new' | null = null
 let anchor = 0
 let source: AudioBufferSourceNode | null = null
+let prevSel = { start: 0, end: 1 } // restored if a click makes no real selection
+let encoding = false
 
 const MAX_MB = 50
+const MIN_SEL_SEC = 0.05 // anything shorter is treated as "no selection"
+
+function hasSelection() {
+  return !!audioBuffer && (end - start) * audioBuffer.duration >= MIN_SEL_SEC
+}
+
+function updateButtons() {
+  const ok = hasSelection()
+  playBtn.disabled = !ok
+  wavBtn.disabled = !ok
+  mp3Btn.disabled = !ok || encoding
+}
 
 async function loadFile(file: File) {
   if (file.size > MAX_MB * 1024 * 1024) {
@@ -99,15 +113,19 @@ drop.addEventListener('drop', e => {
 function computePeaks(buf: AudioBuffer) {
   const data = buf.getChannelData(0)
   const w = canvas.width
-  const step = Math.max(1, Math.floor(data.length / w))
+  const step = data.length / w // fractional, so the last column reaches the end
   const out: { min: number; max: number }[] = []
   for (let x = 0; x < w; x++) {
+    const from = Math.floor(x * step)
+    // at least one sample per column, never past the end (handles very short files)
+    const to = Math.min(data.length, Math.max(from + 1, Math.floor((x + 1) * step)))
     let min = 1, max = -1
-    for (let i = 0; i < step; i++) {
-      const v = data[x * step + i]
+    for (let i = from; i < to; i++) {
+      const v = data[i]
       if (v < min) min = v
       if (v > max) max = v
     }
+    if (min > max) min = max = 0 // empty column (zero-length file)
     out.push({ min, max })
   }
   return out
@@ -140,6 +158,7 @@ function render() {
       `Selection: ${(start * d).toFixed(2)}s to ${(end * d).toFixed(2)}s ` +
       `(${((end - start) * d).toFixed(2)}s)`
   }
+  updateButtons()
 }
 
 function xToFraction(e: PointerEvent) {
@@ -150,6 +169,7 @@ function xToFraction(e: PointerEvent) {
 canvas.addEventListener('pointerdown', e => {
   if (!audioBuffer) return
   canvas.setPointerCapture(e.pointerId)
+  prevSel = { start, end }
   const f = xToFraction(e)
   const grab = 12 / canvas.getBoundingClientRect().width // ~12px grab zone
   if (Math.abs(f - start) < grab) drag = 'start'
@@ -174,10 +194,17 @@ canvas.addEventListener('pointermove', e => {
   render()
 })
 
-canvas.addEventListener('pointerup', () => { drag = null })
+function endDrag() {
+  // a plain click (or a tiny drag) shouldn't wipe out the current selection
+  if (drag === 'new' && !hasSelection()) ({ start, end } = prevSel)
+  drag = null
+  render()
+}
+canvas.addEventListener('pointerup', endDrag)
+canvas.addEventListener('pointercancel', endDrag)
 
 playBtn.addEventListener('click', async () => {
-  if (!audioBuffer) return
+  if (!audioBuffer || !hasSelection()) return
   stop()
   await audioCtx.resume() // browsers keep audio suspended until a user gesture
   source = audioCtx.createBufferSource()
@@ -195,7 +222,7 @@ function stop() {
 }
 
 wavBtn.addEventListener('click', () => {
-  if (!audioBuffer) return
+  if (!audioBuffer || !hasSelection()) return
   const blob = encodeWav(audioBuffer, start, end)
   download(blob, 'trimmed.wav')
 })
@@ -248,13 +275,17 @@ function download(blob: Blob, filename: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a) // Firefox ignores clicks on detached links
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  // revoking right away can cancel the download in Safari/Firefox
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 mp3Btn.addEventListener('click', async () => {
-  if (!audioBuffer) return
-  mp3Btn.disabled = true
+  if (!audioBuffer || !hasSelection() || encoding) return
+  encoding = true
+  updateButtons()
   try {
     const blob = await encodeMp3(
       audioBuffer, start, end, Number(kbpsSel.value),
@@ -265,7 +296,8 @@ mp3Btn.addEventListener('click', async () => {
   } catch {
     status.textContent = 'Encoding failed.'
   } finally {
-    mp3Btn.disabled = false
+    encoding = false
+    updateButtons()
   }
 })
 

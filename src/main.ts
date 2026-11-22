@@ -84,11 +84,12 @@ async function loadFile(file: File) {
     info.textContent =
       `${file.name} · ${audioBuffer.duration.toFixed(1)}s · ` +
       `${audioBuffer.numberOfChannels}ch · ${audioBuffer.sampleRate} Hz`
-    peaks = computePeaks(audioBuffer)
     start = 0
     end = 1
     status.textContent = ''
     editor.hidden = false
+    sizeCanvas() // the canvas has no size while the editor is hidden
+    peaks = computePeaks(audioBuffer)
     render()
   } catch {
     info.textContent = "Couldn't read this file. Try an MP3, WAV, M4A, or MP4."
@@ -108,6 +109,27 @@ drop.addEventListener('drop', e => {
   const f = e.dataTransfer?.files?.[0]
   if (f) loadFile(f)
 })
+
+// Match the canvas's pixel buffer to its on-screen size × devicePixelRatio,
+// so the waveform is sharp on Retina/phone screens and fits any width.
+// Returns true if the size changed (peaks must then be recomputed).
+function sizeCanvas() {
+  const r = canvas.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  const w = Math.round(r.width * dpr)
+  const h = Math.round(r.height * dpr)
+  if (!w || !h || (w === canvas.width && h === canvas.height)) return false
+  canvas.width = w
+  canvas.height = h
+  return true
+}
+
+new ResizeObserver(() => {
+  if (sizeCanvas() && audioBuffer) {
+    peaks = computePeaks(audioBuffer)
+    render()
+  }
+}).observe(canvas)
 
 // Compute once: scanning millions of samples on every mouse move would lag
 function computePeaks(buf: AudioBuffer) {
@@ -147,10 +169,11 @@ function render() {
   g.fillRect(0, 0, start * w, h)
   g.fillRect(end * w, 0, w - end * w, h)
 
-  // handles
+  // handles: 3 CSS px wide, whatever the pixel density
+  const hw = 3 * (window.devicePixelRatio || 1)
   g.fillStyle = '#ffb454'
-  g.fillRect(start * w - 1, 0, 3, h)
-  g.fillRect(end * w - 1, 0, 3, h)
+  g.fillRect(start * w - hw / 2, 0, hw, h)
+  g.fillRect(end * w - hw / 2, 0, hw, h)
 
   if (audioBuffer) {
     const d = audioBuffer.duration
@@ -171,7 +194,8 @@ canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId)
   prevSel = { start, end }
   const f = xToFraction(e)
-  const grab = 12 / canvas.getBoundingClientRect().width // ~12px grab zone
+  const grabPx = e.pointerType === 'touch' ? 24 : 12 // fingers need a bigger target
+  const grab = grabPx / canvas.getBoundingClientRect().width
   if (Math.abs(f - start) < grab) drag = 'start'
   else if (Math.abs(f - end) < grab) drag = 'end'
   else {

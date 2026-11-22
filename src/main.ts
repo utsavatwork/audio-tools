@@ -14,31 +14,43 @@ app.innerHTML = `
     <input type="file" id="file" accept="audio/*,video/*" hidden />
     <span>Drop an audio or video file here, or <u>browse</u></span>
   </label>
-  <p id="info"></p>
+  <p id="info" aria-live="polite"></p>
 
   <div id="editor" hidden>
+    <div class="filebar">
+      <div class="fileinfo">
+        <strong id="file-name"></strong>
+        <span id="file-meta"></span>
+      </div>
+      <button id="change-file">Change file</button>
+    </div>
     <canvas id="wave" width="900" height="160"
       style="touch-action:none;cursor:ew-resize"></canvas>
     <p id="sel"></p>
-    <div class="row">
-      <button id="play">Play selection</button>
-      <button id="stop">Stop</button>
+    <div class="toolbar">
+      <div class="group playback">
+        <button id="play">Play selection</button>
+        <button id="stop">Stop</button>
+      </div>
+      <div class="group export">
+        <select id="kbps" aria-label="MP3 quality">
+          <option value="128">128 kbps</option>
+          <option value="192" selected>192 kbps</option>
+          <option value="320">320 kbps</option>
+        </select>
+        <button id="export-mp3" class="primary">Download MP3</button>
+        <button id="export-wav">Download WAV</button>
+      </div>
     </div>
-    <div class="row">
-      <select id="kbps">
-        <option value="128">128 kbps</option>
-        <option value="192" selected>192 kbps</option>
-        <option value="320">320 kbps</option>
-      </select>
-      <button id="export-mp3">Download MP3</button>
-      <button id="export-wav">Download WAV</button>
-      <span id="status"></span>
-    </div>
+    <p id="status" aria-live="polite"></p>
   </div>
 `
 
 const fileInput = document.querySelector<HTMLInputElement>('#file')!
 const info = document.querySelector<HTMLParagraphElement>('#info')!
+const fileName = document.querySelector<HTMLElement>('#file-name')!
+const fileMeta = document.querySelector<HTMLSpanElement>('#file-meta')!
+const changeBtn = document.querySelector<HTMLButtonElement>('#change-file')!
 const sel = document.querySelector<HTMLParagraphElement>('#sel')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
@@ -46,7 +58,7 @@ const stopBtn = document.querySelector<HTMLButtonElement>('#stop')!
 const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
 const mp3Btn = document.querySelector<HTMLButtonElement>('#export-mp3')!
 const kbpsSel = document.querySelector<HTMLSelectElement>('#kbps')!
-const status = document.querySelector<HTMLSpanElement>('#status')!
+const status = document.querySelector<HTMLParagraphElement>('#status')!
 const drop = document.querySelector<HTMLLabelElement>('#drop')!
 const editor = document.querySelector<HTMLDivElement>('#editor')!
 const g = canvas.getContext('2d')!
@@ -95,13 +107,17 @@ async function loadFile(file: File) {
   info.textContent = 'Decoding...'
   try {
     audioBuffer = await audioCtx.decodeAudioData(await file.arrayBuffer())
-    info.textContent =
-      `${file.name} · ${audioBuffer.duration.toFixed(1)}s · ` +
+    info.textContent = ''
+    fileName.textContent = file.name
+    fileName.title = file.name // long names are cut off with an ellipsis
+    fileMeta.textContent =
+      `${audioBuffer.duration.toFixed(1)}s · ` +
       `${audioBuffer.numberOfChannels}ch · ${audioBuffer.sampleRate} Hz`
     baseName = toBaseName(file.name)
     start = 0
     end = 1
     status.textContent = ''
+    drop.hidden = true // the file bar's "Change file" takes over from here
     editor.hidden = false
     sizeCanvas() // the canvas has no size while the editor is hidden
     peaks = computePeaks(audioBuffer)
@@ -119,13 +135,27 @@ async function loadFile(file: File) {
 fileInput.addEventListener('change', () => {
   const f = fileInput.files?.[0]
   if (f) loadFile(f)
+  fileInput.value = '' // so picking the same file again still fires "change"
 })
 
-drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over') })
-drop.addEventListener('dragleave', () => drop.classList.remove('over'))
-drop.addEventListener('drop', e => {
+changeBtn.addEventListener('click', () => fileInput.click())
+
+// Files can be dropped anywhere on the page, so this keeps working once the
+// drop box is hidden (and a missed drop doesn't navigate away from the page).
+const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files')
+
+window.addEventListener('dragover', e => {
+  if (!hasFiles(e)) return
   e.preventDefault()
-  drop.classList.remove('over')
+  app.classList.add('dragging')
+})
+window.addEventListener('dragleave', e => {
+  if (!e.relatedTarget) app.classList.remove('dragging') // left the window
+})
+window.addEventListener('drop', e => {
+  if (!hasFiles(e)) return
+  e.preventDefault()
+  app.classList.remove('dragging')
   const f = e.dataTransfer?.files?.[0]
   if (f) loadFile(f)
 })

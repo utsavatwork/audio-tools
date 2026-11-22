@@ -8,6 +8,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important; /* wins over display: block/flex below */
+}
 body {
   margin: 0;
 }
@@ -34,17 +37,51 @@ h1 {
   border: 2px dashed #646cff;
   border-radius: 12px;
 }
-.drop.over {
+.dragging .drop,
+.dragging .filebar {
+  border-color: #646cff;
   background: rgba(100, 108, 255, 0.15);
 }
 
 #info {
-  min-height: 1.4em;
+  margin: 12px 0;
   opacity: 0.8;
+}
+#info:empty {
+  display: none;
 }
 #editor {
   margin-top: 16px;
 }
+.filebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 12px;
+  text-align: left;
+}
+.fileinfo {
+  min-width: 0; /* lets a long file name shrink and get an ellipsis */
+}
+#file-name,
+#file-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#file-meta {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+#change-file {
+  flex-shrink: 0;
+}
+
 canvas {
   display: block;
   width: 100%;
@@ -53,13 +90,6 @@ canvas {
   background: rgba(128, 128, 128, 0.12);
 }
 
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  margin: 12px 0;
-}
 button,
 select {
   padding: 10px 16px;
@@ -78,6 +108,49 @@ button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+button.primary {
+  border-color: #535bf2;
+  background: #535bf2; /* a bit darker, so white text is readable on it */
+  color: #fff;
+}
+
+/* playback on the left, downloads on the right */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.group {
+  display: flex;
+  gap: 8px;
+}
+.toolbar button,
+.toolbar select {
+  min-height: 44px; /* same height, and big enough for fingers */
+  white-space: nowrap;
+}
+#sel {
+  margin: 12px 0;
+  font-variant-numeric: tabular-nums;
+}
+#status {
+  min-height: 1.4em; /* reserved, so progress text doesn't move the page */
+  margin: 12px 0 0;
+  opacity: 0.8;
+}
+@media (max-width: 700px) {
+  .toolbar {
+    flex-direction: column;
+  }
+  .group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  #export-wav {
+    grid-column: 1 / -1;
+  }
+}
+
 a {
   color: #646cff;
 }
@@ -188,9 +261,4 @@ a.button:hover {
   text-align: center;
   font-size: 0.9rem;
   opacity: 0.7;
-}
-
-#status {
-  align-self: center;
-  opacity: 0.8;
 }

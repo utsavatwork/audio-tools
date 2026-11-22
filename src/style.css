@@ -78,6 +78,44 @@ button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+a {
+  color: #646cff;
+}
+a.button {
+  display: inline-block;
+  padding: 10px 16px;
+  border: 1px solid #646cff;
+  border-radius: 8px;
+  text-decoration: none;
+}
+a.button:hover {
+  background: #646cff;
+  color: #fff;
+}
+
+/* simple text pages (privacy, 404) */
+.page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  line-height: 1.6;
+}
+.page.center {
+  text-align: center;
+  padding-top: 15vh;
+}
+.page h2 {
+  margin-top: 1.8em;
+  font-size: 1.2rem;
+}
+
+.footer {
+  padding: 0 16px 32px;
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
 #status {
   align-self: center;
   opacity: 0.8;

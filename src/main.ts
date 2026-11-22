@@ -57,6 +57,15 @@ let anchor = 0
 let source: AudioBufferSourceNode | null = null
 let prevSel = { start: 0, end: 1 } // restored if a click makes no real selection
 let encoding = false
+let baseName = 'audio' // from the loaded file, used for export file names
+
+// "My Song (live).final.mp3" -> "My Song (live).final"; strips characters
+// that aren't allowed in file names on Windows/macOS.
+function toBaseName(fileName: string) {
+  const noExt = fileName.replace(/\.[^.]+$/, '')
+  const clean = noExt.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').trim()
+  return clean.slice(0, 100) || 'audio'
+}
 
 const MAX_MB = 50
 const MIN_SEL_SEC = 0.05 // anything shorter is treated as "no selection"
@@ -84,6 +93,7 @@ async function loadFile(file: File) {
     info.textContent =
       `${file.name} · ${audioBuffer.duration.toFixed(1)}s · ` +
       `${audioBuffer.numberOfChannels}ch · ${audioBuffer.sampleRate} Hz`
+    baseName = toBaseName(file.name)
     start = 0
     end = 1
     status.textContent = ''
@@ -248,7 +258,7 @@ function stop() {
 wavBtn.addEventListener('click', () => {
   if (!audioBuffer || !hasSelection()) return
   const blob = encodeWav(audioBuffer, start, end)
-  download(blob, 'trimmed.wav')
+  download(blob, `${baseName}-trimmed.wav`)
 })
 
 function encodeWav(buf: AudioBuffer, startFrac: number, endFrac: number): Blob {
@@ -316,7 +326,7 @@ mp3Btn.addEventListener('click', async () => {
       pct => { status.textContent = `Encoding ${pct}%` }
     )
     status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
-    download(blob, 'trimmed.mp3')
+    download(blob, `${baseName}-trimmed.mp3`)
   } catch {
     status.textContent = 'Encoding failed.'
   } finally {

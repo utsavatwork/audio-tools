@@ -9,6 +9,7 @@ Nothing is uploaded: decoding, trimming and encoding all happen on your device.
 ## Features
 
 - **Trim audio**: drag on the waveform to select a range, or drag the handles to adjust it
+- **Exact times**: type start and end times (`1:23.45` or `83.45`), or nudge them by 0.1 s
 - **Preview** the selection before exporting
 - **Export to MP3** (128 / 192 / 320 kbps) or **WAV** (16-bit PCM)
 - **Video files too**: extract and trim the audio from MP4 and other formats the browser can decode
@@ -64,6 +65,7 @@ vite.config.ts      Multi-page build config (index, privacy, 404)
 public/             Static files copied as-is: favicon, robots.txt, sitemap.xml, og-image.png
 src/
   main.ts           Trimmer: file loading, waveform, selection, playback, WAV/MP3 export
+  time.ts           Formats and parses times like 1:23.45
   analytics.ts      Analytics wrapper and anonymous event helpers
   roadmap.ts        "I want this" voting on the Coming soon cards
   style.css         Styles for all pages (light and dark mode)

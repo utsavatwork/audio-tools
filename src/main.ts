@@ -1,6 +1,7 @@
 import "./style.css";
 import { Mp3Encoder } from '@breezystack/lamejs'
 import { track, lengthBucket } from './analytics'
+import { formatTime, parseTime } from './time'
 import { initRoadmap } from './roadmap'
 
 initRoadmap()
@@ -26,7 +27,28 @@ app.innerHTML = `
     </div>
     <canvas id="wave" width="900" height="160"
       style="touch-action:none;cursor:ew-resize"></canvas>
-    <p id="sel"></p>
+    <div class="times">
+      <div class="time">
+        <label for="start-time">Start</label>
+        <div class="stepper">
+          <button data-edge="start" data-step="-0.1" aria-label="Move start back 0.1 seconds">−</button>
+          <input id="start-time" type="text" autocomplete="off" spellcheck="false"
+            enterkeyhint="done" aria-describedby="time-msg" />
+          <button data-edge="start" data-step="0.1" aria-label="Move start forward 0.1 seconds">+</button>
+        </div>
+      </div>
+      <p class="clip">Clip length <strong id="clip-length"></strong></p>
+      <div class="time">
+        <label for="end-time">End</label>
+        <div class="stepper">
+          <button data-edge="end" data-step="-0.1" aria-label="Move end back 0.1 seconds">−</button>
+          <input id="end-time" type="text" autocomplete="off" spellcheck="false"
+            enterkeyhint="done" aria-describedby="time-msg" />
+          <button data-edge="end" data-step="0.1" aria-label="Move end forward 0.1 seconds">+</button>
+        </div>
+      </div>
+    </div>
+    <p id="time-msg" aria-live="polite"></p>
     <div class="toolbar">
       <div class="group playback">
         <button id="play">Play selection</button>
@@ -51,7 +73,11 @@ const info = document.querySelector<HTMLParagraphElement>('#info')!
 const fileName = document.querySelector<HTMLElement>('#file-name')!
 const fileMeta = document.querySelector<HTMLSpanElement>('#file-meta')!
 const changeBtn = document.querySelector<HTMLButtonElement>('#change-file')!
-const sel = document.querySelector<HTMLParagraphElement>('#sel')!
+const times = document.querySelector<HTMLDivElement>('.times')!
+const startInput = document.querySelector<HTMLInputElement>('#start-time')!
+const endInput = document.querySelector<HTMLInputElement>('#end-time')!
+const clipLength = document.querySelector<HTMLElement>('#clip-length')!
+const timeMsg = document.querySelector<HTMLParagraphElement>('#time-msg')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
 const stopBtn = document.querySelector<HTMLButtonElement>('#stop')!
@@ -73,6 +99,8 @@ let anchor = 0
 let source: AudioBufferSourceNode | null = null
 let prevSel = { start: 0, end: 1 } // restored if a click makes no real selection
 let encoding = false
+const typed = { start: false, end: false } // boxes with typing not applied yet
+let timeInvalid = false // a typed time couldn't be applied
 let baseName = 'audio' // from the loaded file, used for export file names
 
 // "My Song (live).final.mp3" -> "My Song (live).final"; strips characters
@@ -85,13 +113,14 @@ function toBaseName(fileName: string) {
 
 const MAX_MB = 50
 const MIN_SEL_SEC = 0.05 // anything shorter is treated as "no selection"
+const EPS = 1e-6 // rounding slack: 10.1 - 10.05 is slightly under 0.05
 
 function hasSelection() {
-  return !!audioBuffer && (end - start) * audioBuffer.duration >= MIN_SEL_SEC
+  return !!audioBuffer && (end - start) * audioBuffer.duration >= MIN_SEL_SEC - EPS
 }
 
 function updateButtons() {
-  const ok = hasSelection()
+  const ok = hasSelection() && !timeInvalid
   playBtn.disabled = !ok
   wavBtn.disabled = !ok
   mp3Btn.disabled = !ok || encoding
@@ -111,11 +140,13 @@ async function loadFile(file: File) {
     fileName.textContent = file.name
     fileName.title = file.name // long names are cut off with an ellipsis
     fileMeta.textContent =
-      `${audioBuffer.duration.toFixed(1)}s · ` +
+      `${formatTime(audioBuffer.duration)} · ` +
       `${audioBuffer.numberOfChannels}ch · ${audioBuffer.sampleRate} Hz`
     baseName = toBaseName(file.name)
     start = 0
     end = 1
+    discardTyped()
+    times.classList.toggle('hours', audioBuffer.duration >= 3600)
     status.textContent = ''
     drop.hidden = true // the file bar's "Change file" takes over from here
     editor.hidden = false
@@ -227,12 +258,112 @@ function render() {
 
   if (audioBuffer) {
     const d = audioBuffer.duration
-    sel.textContent =
-      `Selection: ${(start * d).toFixed(2)}s to ${(end * d).toFixed(2)}s ` +
-      `(${((end - start) * d).toFixed(2)}s)`
+    // don't overwrite a box while someone is typing in it
+    if (!typed.start) startInput.value = formatTime(start * d)
+    if (!typed.end) endInput.value = formatTime(end * d)
+    clipLength.textContent = formatTime((end - start) * d)
   }
   updateButtons()
 }
+
+// --- Start/End boxes ---
+
+type Edge = 'start' | 'end'
+const boxes: Record<Edge, HTMLInputElement> = { start: startInput, end: endInput }
+
+function clearTimeError() {
+  timeInvalid = false
+  timeMsg.textContent = ''
+  timeMsg.classList.remove('error')
+  startInput.removeAttribute('aria-invalid')
+  endInput.removeAttribute('aria-invalid')
+}
+
+function discardTyped() {
+  typed.start = typed.end = false
+  clearTimeError()
+}
+
+function timeError(edge: Edge, message: string) {
+  timeInvalid = true // Play and Download stay off, so nobody exports the wrong part
+  timeMsg.textContent = message
+  timeMsg.classList.add('error')
+  boxes[edge].setAttribute('aria-invalid', 'true')
+  updateButtons()
+  return false
+}
+
+// Applies whatever was typed. Both boxes are checked together, so a start past
+// the current end is fine once the end is moved too. Returns false if invalid.
+function commitTyped(): boolean {
+  if (!audioBuffer || (!typed.start && !typed.end)) return true
+  clearTimeError()
+  const d = audioBuffer.duration
+  let s = start * d
+  let e = end * d
+  let note = ''
+  for (const edge of ['start', 'end'] as const) {
+    if (!typed[edge]) continue
+    const t = parseTime(boxes[edge].value)
+    if (t === null) return timeError(edge, 'Enter a time like 1:23.45 or 83.45 (seconds).')
+    if (edge === 'start') s = t
+    else {
+      e = Math.min(t, d)
+      if (t > d + 0.01) note = `This file ends at ${formatTime(d)}, so End was set there.`
+    }
+  }
+  if (e - s < MIN_SEL_SEC - EPS) {
+    return typed.start
+      ? timeError('start', `Start must be before End (${formatTime(e)}).`)
+      : timeError('end', `End must be after Start (${formatTime(s)}).`)
+  }
+  start = s / d
+  end = e / d
+  discardTyped()
+  timeMsg.textContent = note
+  render()
+  return true
+}
+
+function nudge(edge: Edge, by: number) {
+  if (!audioBuffer) return
+  if (!commitTyped()) discardTyped()
+  timeMsg.textContent = ''
+  const d = audioBuffer.duration
+  if (edge === 'start') {
+    start = Math.max(0, Math.min(start * d + by, end * d - MIN_SEL_SEC)) / d
+  } else {
+    end = Math.min(d, Math.max(end * d + by, start * d + MIN_SEL_SEC)) / d
+  }
+  render()
+}
+
+for (const edge of ['start', 'end'] as const) {
+  const box = boxes[edge]
+  box.addEventListener('input', () => {
+    typed[edge] = true
+    clearTimeError()
+    updateButtons()
+  })
+  box.addEventListener('blur', commitTyped)
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (commitTyped()) box.select()
+    } else if (e.key === 'Escape') {
+      discardTyped()
+      render()
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault()
+      nudge(edge, (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 0.1))
+    }
+  })
+}
+
+document.querySelectorAll<HTMLButtonElement>('button[data-edge]').forEach(b => {
+  b.addEventListener('click', () => nudge(b.dataset.edge as Edge, Number(b.dataset.step)))
+})
+
+// --- Dragging on the waveform ---
 
 function xToFraction(e: PointerEvent) {
   const r = canvas.getBoundingClientRect()
@@ -241,6 +372,8 @@ function xToFraction(e: PointerEvent) {
 
 canvas.addEventListener('pointerdown', e => {
   if (!audioBuffer) return
+  if (!commitTyped()) discardTyped() // dragging replaces a bad entry
+  timeMsg.textContent = ''
   canvas.setPointerCapture(e.pointerId)
   prevSel = { start, end }
   const f = xToFraction(e)
@@ -278,7 +411,7 @@ canvas.addEventListener('pointerup', endDrag)
 canvas.addEventListener('pointercancel', endDrag)
 
 playBtn.addEventListener('click', async () => {
-  if (!audioBuffer || !hasSelection()) return
+  if (!audioBuffer || !commitTyped() || !hasSelection()) return
   stop()
   await audioCtx.resume() // browsers keep audio suspended until a user gesture
   source = audioCtx.createBufferSource()
@@ -297,7 +430,7 @@ function stop() {
 }
 
 wavBtn.addEventListener('click', () => {
-  if (!audioBuffer || !hasSelection()) return
+  if (!audioBuffer || !commitTyped() || !hasSelection()) return
   const blob = encodeWav(audioBuffer, start, end)
   download(blob, `${baseName}-trimmed.wav`)
   track('export-wav', { length: lengthBucket((end - start) * audioBuffer.duration) })
@@ -359,7 +492,7 @@ function download(blob: Blob, filename: string) {
 }
 
 mp3Btn.addEventListener('click', async () => {
-  if (!audioBuffer || !hasSelection() || encoding) return
+  if (!audioBuffer || encoding || !commitTyped() || !hasSelection()) return
   encoding = true
   updateButtons()
   try {

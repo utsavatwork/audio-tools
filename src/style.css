@@ -100,9 +100,12 @@ select {
   color: inherit;
   cursor: pointer;
 }
-button:hover:not(:disabled) {
-  background: #646cff;
-  color: #fff;
+/* only with a real pointer: on touch, hover sticks after a tap */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background: #646cff;
+    color: #fff;
+  }
 }
 button:disabled {
   opacity: 0.4;
@@ -129,9 +132,72 @@ button.primary {
   min-height: 44px; /* same height, and big enough for fingers */
   white-space: nowrap;
 }
-#sel {
-  margin: 12px 0;
+.times {
+  display: grid;
+  grid-template-columns: 190px 1fr 190px;
+  align-items: end;
+  gap: 12px;
+  margin-top: 12px;
   font-variant-numeric: tabular-nums;
+}
+.time {
+  text-align: left;
+}
+.time label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+.stepper {
+  display: flex;
+  border: 1px solid #646cff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.stepper:focus-within {
+  outline: 2px solid #646cff;
+  outline-offset: 1px;
+}
+.stepper:has([aria-invalid='true']) {
+  border-color: #e5534b;
+}
+.stepper button {
+  flex: 0 0 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 1.2rem;
+  touch-action: manipulation; /* quick taps shouldn't zoom the page */
+}
+.stepper input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0; /* the stepper shows the focus ring */
+  background: transparent;
+  color: inherit;
+  font: inherit; /* at least 16px, or iOS zooms in on focus */
+  text-align: center;
+}
+.clip {
+  margin: 0;
+  line-height: 44px;
+}
+#time-msg {
+  min-height: 1.4em; /* reserved, so a message doesn't move the buttons */
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+#time-msg.error {
+  color: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  #time-msg.error {
+    color: #ff7b72;
+  }
 }
 #status {
   min-height: 1.4em; /* reserved, so progress text doesn't move the page */
@@ -139,6 +205,17 @@ button.primary {
   opacity: 0.8;
 }
 @media (max-width: 700px) {
+  .times {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .times.hours {
+    grid-template-columns: 1fr; /* 1:02:03.00 needs the room */
+  }
+  .clip {
+    order: 1; /* below both boxes */
+    grid-column: 1 / -1;
+    line-height: 1.4;
+  }
   .toolbar {
     flex-direction: column;
   }

@@ -1,5 +1,6 @@
 import "./style.css";
 import { Mp3Encoder } from '@breezystack/lamejs'
+import { track, lengthBucket } from './analytics'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
@@ -84,6 +85,7 @@ function updateButtons() {
 async function loadFile(file: File) {
   if (file.size > MAX_MB * 1024 * 1024) {
     info.textContent = `File is too large (max ${MAX_MB} MB).`
+    track('file-too-large', { type: file.type || 'unknown' })
     return
   }
   stop()
@@ -101,8 +103,13 @@ async function loadFile(file: File) {
     sizeCanvas() // the canvas has no size while the editor is hidden
     peaks = computePeaks(audioBuffer)
     render()
+    track('file-loaded', {
+      type: file.type || 'unknown',
+      length: lengthBucket(audioBuffer.duration),
+    })
   } catch {
     info.textContent = "Couldn't read this file. Try an MP3, WAV, M4A, or MP4."
+    track('file-unreadable', { type: file.type || 'unknown' })
   }
 }
 
@@ -246,6 +253,7 @@ playBtn.addEventListener('click', async () => {
   source.connect(audioCtx.destination)
   const d = audioBuffer.duration
   source.start(0, start * d, (end - start) * d) // (when, offset, duration)
+  track('play-selection')
 })
 
 stopBtn.addEventListener('click', stop)
@@ -259,6 +267,7 @@ wavBtn.addEventListener('click', () => {
   if (!audioBuffer || !hasSelection()) return
   const blob = encodeWav(audioBuffer, start, end)
   download(blob, `${baseName}-trimmed.wav`)
+  track('export-wav', { length: lengthBucket((end - start) * audioBuffer.duration) })
 })
 
 function encodeWav(buf: AudioBuffer, startFrac: number, endFrac: number): Blob {
@@ -327,8 +336,13 @@ mp3Btn.addEventListener('click', async () => {
     )
     status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
     download(blob, `${baseName}-trimmed.mp3`)
+    track('export-mp3', {
+      kbps: kbpsSel.value,
+      length: lengthBucket((end - start) * audioBuffer.duration),
+    })
   } catch {
     status.textContent = 'Encoding failed.'
+    track('export-failed', { format: 'mp3' })
   } finally {
     encoding = false
     updateButtons()

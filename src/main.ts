@@ -1,6 +1,9 @@
 import "./style.css";
 import { Mp3Encoder } from '@breezystack/lamejs'
 import { track, lengthBucket } from './analytics'
+import { initRoadmap } from './roadmap'
+
+initRoadmap()
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- dark background from the first frame in dark mode, before the CSS arrives -->
+    <meta name="color-scheme" content="light dark" />
+    <title>Audio Cutter - Trim MP3 Online, Free and Private | MP3 Playground</title>
+    <meta name="description" content="Trim and cut audio or video files to MP3 or WAV right in your browser. Free, private, no upload." />
+    <meta property="og:title" content="Audio Cutter - MP3 Playground" />
+    <meta property="og:description" content="Trim audio in your browser. Your files never leave your device." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mp3playground.com/audio-cutter" />
+    <meta property="og:image" content="https://mp3playground.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://mp3playground.com/audio-cutter" />
+    <link rel="stylesheet" href="/src/style.css">
+    <script defer src="https://cloud.umami.is/script.js"
+      data-website-id="8af71d82-8c32-4402-bb81-f5dd2caaa414"
+      data-domains="mp3playground.com"></script>
+  </head>
+  <body>
+    <nav class="topnav"><a href="/">&larr; MP3 Playground</a></nav>
+    <!-- the tool's markup lives here, not in the script, so the page appears complete -->
+    <main id="app">
+      <h1>Audio Cutter</h1>
+      <p class="sub">Trim audio or video files in your browser. Your files never leave your device.</p>
+
+      <label id="drop" class="drop">
+        <input type="file" id="file" accept="audio/*,video/*" hidden />
+        <span>Drop an audio or video file here, or <u>browse</u></span>
+      </label>
+      <p id="info" aria-live="polite"></p>
+
+      <div id="editor" hidden>
+        <div class="filebar">
+          <div class="fileinfo">
+            <strong id="file-name"></strong>
+            <span id="file-meta"></span>
+          </div>
+          <button id="change-file">Change file</button>
+        </div>
+        <div class="wave">
+          <canvas id="wave" width="900" height="160"
+            style="touch-action:none;cursor:ew-resize"></canvas>
+          <div id="head" hidden></div>
+        </div>
+        <div class="times">
+          <div class="time">
+            <label for="start-time">Start</label>
+            <div class="stepper">
+              <button data-edge="start" data-step="-0.1" aria-label="Move start back 0.1 seconds">−</button>
+              <input id="start-time" type="text" autocomplete="off" spellcheck="false"
+                enterkeyhint="done" aria-describedby="time-msg" />
+              <button data-edge="start" data-step="0.1" aria-label="Move start forward 0.1 seconds">+</button>
+            </div>
+            <button class="set" data-set="start" disabled>Set start here</button>
+          </div>
+          <div class="clip">
+            <p>Clip length <strong id="clip-length"></strong></p>
+            <p id="pos"></p>
+          </div>
+          <div class="time">
+            <label for="end-time">End</label>
+            <div class="stepper">
+              <button data-edge="end" data-step="-0.1" aria-label="Move end back 0.1 seconds">−</button>
+              <input id="end-time" type="text" autocomplete="off" spellcheck="false"
+                enterkeyhint="done" aria-describedby="time-msg" />
+              <button data-edge="end" data-step="0.1" aria-label="Move end forward 0.1 seconds">+</button>
+            </div>
+            <button class="set" data-set="end" disabled>Set end here</button>
+          </div>
+        </div>
+        <p id="time-msg" aria-live="polite"></p>
+        <div class="toolbar">
+          <div class="group playback">
+            <button id="play">Play selection</button>
+          </div>
+          <div class="group export">
+            <select id="kbps" aria-label="MP3 quality">
+              <option value="128">128 kbps</option>
+              <option value="192" selected>192 kbps</option>
+              <option value="320">320 kbps</option>
+            </select>
+            <button id="export-mp3" class="primary">Download MP3</button>
+            <button id="export-wav">Download WAV</button>
+          </div>
+        </div>
+        <p id="status" aria-live="polite"></p>
+      </div>
+    </main>
+    <p class="more">More tools are on the way. <a href="/#coming-soon">See what's coming and vote</a></p>
+    <footer class="footer">
+      Your files never leave your device · <a href="/privacy.html">Privacy</a> ·
+      <a href="https://tally.so/r/8NZd4A" target="_blank" rel="noopener">Feedback</a> ·
+      <a href="https://github.com/utsavatwork/audio-tools" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+    <script type="module" src="/src/cutter.ts"></script>
+  </body>
+</html>

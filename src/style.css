@@ -1,3 +1,7 @@
+/* fade between pages instead of a hard cut (browsers without support just switch) */
+@view-transition {
+  navigation: auto;
+}
 :root {
   color-scheme: light dark;
   font-family:
@@ -271,9 +275,11 @@ a.button {
   border-radius: 8px;
   text-decoration: none;
 }
-a.button:hover {
-  background: #646cff;
-  color: #fff;
+@media (hover: hover) {
+  a.button:hover {
+    background: #646cff;
+    color: #fff;
+  }
 }
 
 /* simple text pages (privacy, 404) */
@@ -290,6 +296,72 @@ a.button:hover {
 .page h2 {
   margin-top: 1.8em;
   font-size: 1.2rem;
+}
+
+/* home page */
+.hero {
+  padding: 40px 16px 8px;
+  text-align: center;
+}
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 7vw, 3rem);
+}
+.hero .sub {
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+.tools {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 16px 8px;
+}
+a.card.tool {
+  color: inherit;
+  text-decoration: none;
+  border: 2px solid #646cff;
+}
+a.card.tool h3 {
+  font-size: 1.3rem;
+}
+a.card.tool .button {
+  align-self: flex-start;
+  padding: 10px 16px;
+  border: 1px solid #535bf2;
+  border-radius: 8px;
+  background: #535bf2;
+  color: #fff;
+}
+@media (hover: hover) {
+  a.card.tool:hover {
+    background: rgba(100, 108, 255, 0.1);
+  }
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* tool pages */
+.topnav {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 16px 16px 0;
+}
+.topnav a {
+  text-decoration: none;
+}
+.more {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  text-align: center;
+  opacity: 0.8;
 }
 
 /* Coming soon / roadmap */

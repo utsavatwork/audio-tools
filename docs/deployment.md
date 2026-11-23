@@ -31,10 +31,18 @@ A deploy can also be started by hand from the repository's **Actions** tab ("Run
   `.mp3playground.com` suffix (e.g. `_abc123.www`), because Namecheap appends the domain itself.
 - "Allow export" stays disabled. Exportable certificates cost extra, and CloudFront doesn't need one.
 
-### www redirect
+### www redirect and clean URLs
 
-A CloudFront Function (`wwwRouting`) runs on **viewer request** and returns a 301 from
-`www.mp3playground.com/<path>` to `https://mp3playground.com/<path>`, so there's one canonical domain.
+A CloudFront Function (`wwwRouting`) runs on **viewer request**. It:
+
+- returns a 301 from `www.mp3playground.com/<path>` to `https://mp3playground.com/<path>`,
+  so there's one canonical domain
+- serves tool pages at clean URLs: a path with no file extension, like `/audio-cutter` or
+  `/audio-cutter/`, is rewritten to `/audio-cutter/index.html`. S3 has no folder index
+  pages of its own, so without this those URLs would return the 404 page.
+
+The function's code is in [cloudfront/www-routing.js](../cloudfront/www-routing.js). After
+changing it, publish it in the CloudFront console (Functions → `wwwRouting` → Publish).
 
 ### 404 page
 

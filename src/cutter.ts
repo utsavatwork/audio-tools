@@ -1,79 +1,8 @@
-import "./style.css";
 import { Mp3Encoder } from '@breezystack/lamejs'
 import { track, lengthBucket } from './analytics'
 import { formatTime, parseTime } from './time'
-import { initRoadmap } from './roadmap'
 
-initRoadmap()
-
-const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `
-  <h1>MP3 Playground</h1>
-  <p class="sub">Trim audio in your browser. Your files never leave your device.</p>
-
-  <label id="drop" class="drop">
-    <input type="file" id="file" accept="audio/*,video/*" hidden />
-    <span>Drop an audio or video file here, or <u>browse</u></span>
-  </label>
-  <p id="info" aria-live="polite"></p>
-
-  <div id="editor" hidden>
-    <div class="filebar">
-      <div class="fileinfo">
-        <strong id="file-name"></strong>
-        <span id="file-meta"></span>
-      </div>
-      <button id="change-file">Change file</button>
-    </div>
-    <div class="wave">
-      <canvas id="wave" width="900" height="160"
-        style="touch-action:none;cursor:ew-resize"></canvas>
-      <div id="head" hidden></div>
-    </div>
-    <div class="times">
-      <div class="time">
-        <label for="start-time">Start</label>
-        <div class="stepper">
-          <button data-edge="start" data-step="-0.1" aria-label="Move start back 0.1 seconds">−</button>
-          <input id="start-time" type="text" autocomplete="off" spellcheck="false"
-            enterkeyhint="done" aria-describedby="time-msg" />
-          <button data-edge="start" data-step="0.1" aria-label="Move start forward 0.1 seconds">+</button>
-        </div>
-        <button class="set" data-set="start" disabled>Set start here</button>
-      </div>
-      <div class="clip">
-        <p>Clip length <strong id="clip-length"></strong></p>
-        <p id="pos"></p>
-      </div>
-      <div class="time">
-        <label for="end-time">End</label>
-        <div class="stepper">
-          <button data-edge="end" data-step="-0.1" aria-label="Move end back 0.1 seconds">−</button>
-          <input id="end-time" type="text" autocomplete="off" spellcheck="false"
-            enterkeyhint="done" aria-describedby="time-msg" />
-          <button data-edge="end" data-step="0.1" aria-label="Move end forward 0.1 seconds">+</button>
-        </div>
-        <button class="set" data-set="end" disabled>Set end here</button>
-      </div>
-    </div>
-    <p id="time-msg" aria-live="polite"></p>
-    <div class="toolbar">
-      <div class="group playback">
-        <button id="play">Play selection</button>
-      </div>
-      <div class="group export">
-        <select id="kbps" aria-label="MP3 quality">
-          <option value="128">128 kbps</option>
-          <option value="192" selected>192 kbps</option>
-          <option value="320">320 kbps</option>
-        </select>
-        <button id="export-mp3" class="primary">Download MP3</button>
-        <button id="export-wav">Download WAV</button>
-      </div>
-    </div>
-    <p id="status" aria-live="polite"></p>
-  </div>
-`
+const app = document.querySelector<HTMLElement>('#app')!
 
 const fileInput = document.querySelector<HTMLInputElement>('#file')!
 const info = document.querySelector<HTMLParagraphElement>('#info')!

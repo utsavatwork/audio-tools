@@ -20,6 +20,9 @@ npm run build     # type-check and build to dist/
   that need to upload user files to a server won't be accepted.
 - **Keep it light.** The app is plain TypeScript with no UI framework. Please discuss new
   dependencies in an issue first.
+- **One page per tool.** Each tool lives on its own page (like `audio-cutter/index.html`,
+  served at `/audio-cutter`) with its own script in `src/`. Add the page to `vite.config.ts`,
+  `public/sitemap.xml` and the home page's tool list.
 - **Test on mobile.** Many people use the site on phones, so check touch and narrow screens.
 
 ## Analytics

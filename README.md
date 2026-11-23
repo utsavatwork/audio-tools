@@ -3,10 +3,15 @@
 **Free, private audio tools that run entirely in your browser.**
 Live at **[mp3playground.com](https://mp3playground.com)**.
 
-Drop in an audio or video file, select the part you want, and download it as MP3 or WAV.
-Nothing is uploaded: decoding, trimming and encoding all happen on your device.
+Nothing is uploaded: decoding, editing and encoding all happen on your device.
+The home page lists the tools and the ones coming next. Each tool has its own page.
 
-## Features
+## Tools
+
+### [Audio cutter](https://mp3playground.com/audio-cutter)
+
+Drop in an audio or video file, select the part you want, and download it as MP3 or WAV.
+
 
 - **Trim audio**: drag on the waveform to select a range, or drag the handles to adjust it
 - **Exact times**: type start and end times (`1:23.45` or `83.45`), or nudge them by 0.1 s
@@ -59,13 +64,15 @@ npm run preview   # serve the production build locally
 ## Project structure
 
 ```
-index.html          Main page: the trimmer plus the "Coming soon" section
+index.html          Home page: the list of tools plus the "Coming soon" section
+audio-cutter/       The audio cutter page (served at /audio-cutter)
 privacy.html        Privacy policy
 404.html            Page shown for missing URLs
-vite.config.ts      Multi-page build config (index, privacy, 404)
+vite.config.ts      Multi-page build config (home, audio-cutter, privacy, 404)
 public/             Static files copied as-is: favicon, robots.txt, sitemap.xml, og-image.png
 src/
-  main.ts           Trimmer: file loading, waveform, selection, playback, WAV/MP3 export
+  home.ts           Home page script
+  cutter.ts         Audio cutter: file loading, waveform, selection, playback, WAV/MP3 export
   time.ts           Formats and parses times like 1:23.45
   analytics.ts      Analytics wrapper and anonymous event helpers
   roadmap.ts        "I want this" voting on the Coming soon cards

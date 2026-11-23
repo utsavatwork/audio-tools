@@ -4,10 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MP3 Playground - Free Online Audio Trimmer</title>
-    <meta name="description" content="Trim and cut audio or video files to MP3 or WAV right in your browser. Free, private, no upload." />
-    <meta property="og:title" content="MP3 Playground - Free Online Audio Trimmer" />
-    <meta property="og:description" content="Trim audio in your browser. Your files never leave your device." />
+    <!-- dark background from the first frame in dark mode, before the CSS arrives -->
+    <meta name="color-scheme" content="light dark" />
+    <title>MP3 Playground - Free, Private Audio Tools in Your Browser</title>
+    <meta name="description" content="Free audio tools that run entirely in your browser. Trim MP3s and other audio or video files without uploading them." />
+    <meta property="og:title" content="MP3 Playground - Free, Private Audio Tools" />
+    <meta property="og:description" content="Audio tools that run in your browser. Your files never leave your device." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://mp3playground.com/" />
     <meta property="og:image" content="https://mp3playground.com/og-image.png" />
@@ -16,12 +18,27 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href="https://mp3playground.com/" />
     <!-- Umami analytics: cookie-free; data-domains keeps localhost out of the stats -->
+    <link rel="stylesheet" href="/src/style.css">
     <script defer src="https://cloud.umami.is/script.js"
       data-website-id="8af71d82-8c32-4402-bb81-f5dd2caaa414"
       data-domains="mp3playground.com"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <header class="hero">
+      <h1>MP3 Playground</h1>
+      <p class="sub">Free, private audio tools that run in your browser. Your files never leave your device.</p>
+    </header>
+
+    <section class="tools" aria-labelledby="tools-title">
+      <h2 id="tools-title" class="visually-hidden">Tools</h2>
+      <div class="cards">
+        <a class="card tool" href="/audio-cutter">
+          <h3>Audio cutter</h3>
+          <p>Trim an audio or video file and download the part you want as MP3 or WAV.</p>
+          <span class="button">Open audio cutter</span>
+        </a>
+      </div>
+    </section>
 
     <section class="roadmap" id="coming-soon" aria-labelledby="roadmap-title">
       <h2 id="roadmap-title">Coming soon</h2>
@@ -75,6 +92,6 @@
       <a href="https://tally.so/r/8NZd4A" target="_blank" rel="noopener">Feedback</a> ·
       <a href="https://github.com/utsavatwork/audio-tools" target="_blank" rel="noopener">GitHub</a>
     </footer>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/home.ts"></script>
   </body>
 </html>

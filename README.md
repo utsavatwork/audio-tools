@@ -15,8 +15,8 @@ Drop in an audio or video file, select the part you want, and download it as MP3
 
 - **Trim audio**: drag on the waveform to select a range, or drag the handles to adjust it
 - **Exact times**: type start and end times (`1:23.45` or `83.45`), or nudge them by 0.1 s
-- **Preview** the selection with a moving playhead (spacebar to play or stop), and set the start
-  or end at the moment you hear it
+- **Preview** with a moving playhead (spacebar to play or stop): click the waveform to jump
+  anywhere, drag the playhead to scrub, and set the start or end at the moment you hear it
 - **Export to MP3** (128 / 192 / 320 kbps) or **WAV** (16-bit PCM)
 - **Video files too**: extract and trim the audio from MP4 and other formats the browser can decode
 - Works on desktop and mobile, with drag-and-drop and touch support

@@ -108,6 +108,23 @@ canvas {
   box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.5); /* visible on dim areas too */
   pointer-events: none; /* drags go to the waveform underneath */
 }
+/* a knob on top, so the playhead looks like something you can grab */
+#head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -2px);
+}
+.hint {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  opacity: 0.65;
+}
 
 button,
 select {
@@ -215,7 +232,7 @@ button.primary {
   line-height: 44px;
 }
 #play {
-  min-width: 140px; /* same width for "Play selection" and "Stop" */
+  min-width: 140px; /* same width for "Play" and "Stop" */
 }
 #time-msg {
   min-height: 1.4em; /* reserved, so a message doesn't move the buttons */

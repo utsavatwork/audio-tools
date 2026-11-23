@@ -33,10 +33,12 @@ let audioBuffer: AudioBuffer | null = null
 let peaks: { min: number; max: number }[] = []
 let start = 0 // selection as fractions of the track (0..1)
 let end = 1
-let drag: 'start' | 'end' | 'new' | null = null
+let drag: 'start' | 'end' | 'new' | 'head' | null = null
 let anchor = 0
+let downX = 0 // where the pointer went down, to tell a click from a drag
+let resumeAfterScrub = false // playback paused while the playhead is dragged
 // What's playing now. `from`/`to` are seconds in the file, `at` is the audio clock
-// time when `from` started, `floor` is where the user pressed Play.
+// time when `from` started, `floor` is where playback (re)started from.
 let playing: {
   source: AudioBufferSourceNode
   from: number
@@ -45,7 +47,7 @@ let playing: {
   floor: number
 } | null = null
 let playId = 0 // cancels a Play that's still waiting for the audio to wake up
-let head: number | null = null // where playback was stopped, in seconds
+let head: number | null = null // playhead while not playing, in seconds
 let prevSel = { start: 0, end: 1 } // restored if a click makes no real selection
 let encoding = false
 const typed = { start: false, end: false } // boxes with typing not applied yet
@@ -71,7 +73,7 @@ function hasSelection() {
 function updateButtons() {
   const ok = hasSelection() && !timeInvalid
   playBtn.disabled = !ok && !playing // it's the Stop button while playing
-  playBtn.textContent = playing ? 'Stop' : 'Play selection'
+  playBtn.textContent = playing ? 'Stop' : 'Play'
   wavBtn.disabled = !ok
   mp3Btn.disabled = !ok || encoding
 }
@@ -334,11 +336,14 @@ canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId)
   prevSel = { start, end }
   const f = xToFraction(e)
-  const grabPx = e.pointerType === 'touch' ? 24 : 12 // fingers need a bigger target
-  const grab = grabPx / canvas.getBoundingClientRect().width
-  if (Math.abs(f - start) < grab) drag = 'start'
-  else if (Math.abs(f - end) < grab) drag = 'end'
-  else {
+  downX = e.clientX
+  drag = grabbed(f, e.pointerType)
+  if (drag === 'head') {
+    // pause while scrubbing; playback picks up from wherever the playhead is dropped
+    resumeAfterScrub = !!playing
+    stop()
+    head = f * audioBuffer.duration
+  } else if (!drag) {
     drag = 'new'
     anchor = f
     start = end = f
@@ -346,10 +351,29 @@ canvas.addEventListener('pointerdown', e => {
   render()
 })
 
+// Which handle (or the playhead) is under the pointer. Handles win when they overlap.
+function grabbed(f: number, pointerType: string): 'start' | 'end' | 'head' | null {
+  if (!audioBuffer) return null
+  const grabPx = pointerType === 'touch' ? 24 : 12 // fingers need a bigger target
+  const grab = grabPx / canvas.getBoundingClientRect().width
+  const pos = position()
+  if (Math.abs(f - start) < grab) return 'start'
+  if (Math.abs(f - end) < grab) return 'end'
+  if (pos !== null && Math.abs(f - pos / audioBuffer.duration) < grab) return 'head'
+  return null
+}
+
 canvas.addEventListener('pointermove', e => {
-  if (!drag) return
+  if (!drag) {
+    // show what a press here would do: resize/scrub near a line, select elsewhere
+    if (e.pointerType === 'mouse') {
+      canvas.style.cursor = grabbed(xToFraction(e), 'mouse') ? 'ew-resize' : 'crosshair'
+    }
+    return
+  }
   const f = xToFraction(e)
-  if (drag === 'start') start = Math.min(f, end)
+  if (drag === 'head') head = f * audioBuffer!.duration
+  else if (drag === 'start') start = Math.min(f, end)
   else if (drag === 'end') end = Math.max(f, start)
   else {
     start = Math.min(anchor, f)
@@ -358,10 +382,18 @@ canvas.addEventListener('pointermove', e => {
   render()
 })
 
-function endDrag() {
-  // a plain click (or a tiny drag) shouldn't wipe out the current selection
-  if (drag === 'new' && !hasSelection()) ({ start, end } = prevSel)
+function endDrag(e: PointerEvent) {
+  const was = drag
   drag = null
+  if (was === 'head') {
+    if (resumeAfterScrub && head !== null) void playFrom(head)
+  } else if (was === 'new') {
+    const clickPx = e.pointerType === 'touch' ? 8 : 4
+    const isClick = e.type === 'pointerup' && Math.abs(e.clientX - downX) < clickPx
+    // a click moves the playhead and keeps the selection; so does a drag too short to use
+    if (isClick || !hasSelection()) ({ start, end } = prevSel)
+    if (isClick && audioBuffer) seek(anchor * audioBuffer.duration)
+  }
   syncPlayback()
   render()
 }
@@ -402,17 +434,45 @@ function stopSource() {
   source?.stop()
 }
 
-async function play() {
+// Playback stops at the end of the selection, unless it starts past it: then it
+// plays to the end of the file, so you can listen anywhere in the track.
+function stopPoint(from: number) {
+  const d = audioBuffer!.duration
+  return from < end * d - EPS ? end * d : d
+}
+
+// Plays from the playhead, or from the start of the selection if there's no
+// playhead (or it sits at the very end of the selection or the file).
+function play() {
   if (!audioBuffer || !commitTyped() || !hasSelection()) return
+  const d = audioBuffer.duration
+  const atEnd = head !== null && (Math.abs(head - end * d) < 0.01 || head > d - MIN_SEL_SEC)
+  void playFrom(head === null || atEnd ? start * d : head)
+  track('play-selection')
+}
+
+async function playFrom(from: number) {
   const id = ++playId
   await audioCtx.resume() // browsers keep audio suspended until a user gesture
-  if (id !== playId || !audioBuffer || !hasSelection()) return
+  if (id !== playId || !audioBuffer) return
   stopSource()
-  const d = audioBuffer.duration
-  startSource(start * d, end * d, start * d)
+  head = null
+  startSource(from, stopPoint(from), from)
   render()
   requestAnimationFrame(tick)
-  track('play-selection')
+}
+
+// Move the playhead. While playing, playback jumps there and carries on.
+function seek(t: number) {
+  if (!audioBuffer) return
+  t = Math.min(Math.max(0, t), audioBuffer.duration - MIN_SEL_SEC)
+  if (playing) {
+    stopSource()
+    startSource(t, stopPoint(t), t)
+  } else {
+    head = t
+  }
+  render()
 }
 
 // The playhead stays where you stopped, so you can still "Set start/end here".
@@ -430,30 +490,23 @@ function tick() {
   requestAnimationFrame(tick)
 }
 
-// Call after the selection changes: keeps playback and playhead inside it.
+// Call after the selection changes: playback then stops at the new end instead.
 function syncPlayback() {
-  if (!audioBuffer) return
-  const s = start * audioBuffer.duration
-  const e = end * audioBuffer.duration
-  const pos = position()
-  if (pos === null) return
-  if (pos < s - EPS || pos > e + EPS) {
-    stop()
-    head = null
-  } else if (playing && Math.abs(playing.to - e) > EPS) {
-    const raw = rawPosition(playing)
-    const { floor } = playing
-    if (raw >= e) return stop()
-    stopSource()
-    startSource(raw, e, floor) // carry on from here to the new end
-  }
+  if (!audioBuffer || !playing) return
+  const raw = rawPosition(playing)
+  const to = stopPoint(raw)
+  if (Math.abs(playing.to - to) <= EPS) return
+  if (raw >= to) return stop()
+  const { floor } = playing
+  stopSource()
+  startSource(raw, to, floor) // carry on from here to the new stop point
 }
 
 function updateHead() {
   const pos = position()
   headEl.hidden = pos === null
   posText.textContent =
-    pos === null ? '' : `${playing ? 'Playing' : 'Stopped at'} ${formatTime(pos)}`
+    pos === null ? '' : `${playing ? 'Playing' : 'Playhead at'} ${formatTime(pos)}`
   if (!audioBuffer || pos === null) {
     setStartBtn.disabled = setEndBtn.disabled = true
     return

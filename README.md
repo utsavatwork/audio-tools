@@ -10,10 +10,13 @@ The home page lists the tools and the ones coming next. Each tool has its own pa
 
 ### [Audio cutter](https://mp3playground.com/audio-cutter)
 
-Drop in an audio or video file, select the part you want, and download it as MP3 or WAV.
+Drop in an audio or video file, select a part, and either keep just that part or cut it out
+and keep the rest. Download the result as MP3 or WAV.
 
 
 - **Trim audio**: drag on the waveform to select a range, or drag the handles to adjust it
+- **Keep or remove**: export only the selection, or cut it out and join the rest
+  (with a 10 ms crossfade so there's no click at the join)
 - **Exact times**: type start and end times (`1:23.45` or `83.45`), or nudge them by 0.1 s
 - **Preview** with a moving playhead (spacebar to play or stop): click the waveform to jump
   anywhere, drag the playhead to scrub, and set the start or end at the moment you hear it

@@ -13,6 +13,8 @@ const times = document.querySelector<HTMLDivElement>('.times')!
 const startInput = document.querySelector<HTMLInputElement>('#start-time')!
 const endInput = document.querySelector<HTMLInputElement>('#end-time')!
 const clipLength = document.querySelector<HTMLElement>('#clip-length')!
+const clipLabel = document.querySelector<HTMLElement>('#clip-label')!
+const modeInputs = document.querySelectorAll<HTMLInputElement>('input[name=mode]')
 const timeMsg = document.querySelector<HTMLParagraphElement>('#time-msg')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
@@ -33,17 +35,19 @@ let audioBuffer: AudioBuffer | null = null
 let peaks: { min: number; max: number }[] = []
 let start = 0 // selection as fractions of the track (0..1)
 let end = 1
+// keep: export the selection. remove: cut it out and export the rest, joined.
+let mode: 'keep' | 'remove' = 'keep'
 let drag: 'start' | 'end' | 'new' | 'head' | null = null
 let anchor = 0
 let downX = 0 // where the pointer went down, to tell a click from a drag
 let resumeAfterScrub = false // playback paused while the playhead is dragged
-// What's playing now. `from`/`to` are seconds in the file, `at` is the audio clock
-// time when `from` started, `floor` is where playback (re)started from.
+// What's playing now: one or more back-to-back ranges of the file (in Remove mode,
+// the removed part is skipped). `at` is the audio clock time each range starts,
+// `floor` is where playback (re)started from.
+type Seg = { from: number; to: number; at: number }
 let playing: {
-  source: AudioBufferSourceNode
-  from: number
-  to: number
-  at: number
+  sources: AudioBufferSourceNode[]
+  segs: Seg[]
   floor: number
 } | null = null
 let playId = 0 // cancels a Play that's still waiting for the audio to wake up
@@ -64,18 +68,30 @@ function toBaseName(fileName: string) {
 
 const MAX_MB = 50
 const MIN_SEL_SEC = 0.05 // anything shorter is treated as "no selection"
+const JOIN_SEC = 0.01 // crossfade where the two parts meet in Remove mode, so there's no click
 const EPS = 1e-6 // rounding slack: 10.1 - 10.05 is slightly under 0.05
 
 function hasSelection() {
   return !!audioBuffer && (end - start) * audioBuffer.duration >= MIN_SEL_SEC - EPS
 }
 
+// Length of what will be exported, in seconds
+function resultLength() {
+  if (!audioBuffer) return 0
+  const d = audioBuffer.duration
+  if (mode === 'keep') return (end - start) * d
+  const before = start * d
+  const after = d - end * d
+  return before + after - Math.min(JOIN_SEC, before, after)
+}
+
 function updateButtons() {
   const ok = hasSelection() && !timeInvalid
+  const exportOk = ok && resultLength() >= MIN_SEL_SEC - EPS // removing everything leaves nothing
   playBtn.disabled = !ok && !playing // it's the Stop button while playing
   playBtn.textContent = playing ? 'Stop' : 'Play'
-  wavBtn.disabled = !ok
-  mp3Btn.disabled = !ok || encoding
+  wavBtn.disabled = !exportOk
+  mp3Btn.disabled = !exportOk || encoding
 }
 
 async function loadFile(file: File) {
@@ -198,10 +214,16 @@ function render() {
     g.fillRect(x, y1, 1, Math.max(1, y2 - y1))
   })
 
-  // dim everything outside the selection
+  // dim what won't be exported: outside the selection, or the selection itself
   g.fillStyle = 'rgba(0,0,0,0.6)'
-  g.fillRect(0, 0, start * w, h)
-  g.fillRect(end * w, 0, w - end * w, h)
+  if (mode === 'keep') {
+    g.fillRect(0, 0, start * w, h)
+    g.fillRect(end * w, 0, w - end * w, h)
+  } else {
+    g.fillRect(start * w, 0, (end - start) * w, h)
+    g.fillStyle = 'rgba(229,83,75,0.25)' // and tint it red: this part gets cut
+    g.fillRect(start * w, 0, (end - start) * w, h)
+  }
 
   // handles: 3 CSS px wide, whatever the pixel density
   const hw = 3 * (window.devicePixelRatio || 1)
@@ -214,7 +236,8 @@ function render() {
     // don't overwrite a box while someone is typing in it
     if (!typed.start) startInput.value = formatTime(start * d)
     if (!typed.end) endInput.value = formatTime(end * d)
-    clipLength.textContent = formatTime((end - start) * d)
+    clipLabel.textContent = mode === 'keep' ? 'Clip length' : 'Result length'
+    clipLength.textContent = formatTime(resultLength())
   }
   updateHead()
   updateButtons()
@@ -406,49 +429,77 @@ canvas.addEventListener('pointercancel', endDrag)
 // you hear right now: Bluetooth headphones can lag a fraction of a second behind.
 function position(): number | null {
   if (!playing) return head
-  const heard = rawPosition(playing) - (audioCtx.outputLatency || 0)
-  return Math.min(playing.to, Math.max(playing.floor, heard))
+  return positionAt(audioCtx.currentTime - (audioCtx.outputLatency || 0), playing.floor)
 }
 
-function rawPosition(p: { from: number; at: number }) {
-  return p.from + (audioCtx.currentTime - p.at)
+// Position in the file without the headphone delay: what's being sent out right now
+function rawPosition() {
+  return playing ? positionAt(audioCtx.currentTime, 0) : 0
 }
 
-function startSource(from: number, to: number, floor: number) {
-  const source = audioCtx.createBufferSource()
-  source.buffer = audioBuffer
-  source.connect(audioCtx.destination)
-  source.onended = () => {
-    if (playing?.source !== source) return // stopped or replaced, not finished
-    playing = null
-    head = null
-    render()
-  }
-  source.start(0, from, to - from) // (when, offset, duration)
-  playing = { source, from, to, at: audioCtx.currentTime, floor }
+function positionAt(t: number, floor: number) {
+  const segs = playing!.segs
+  let i = segs.length - 1
+  while (i > 0 && segs[i].at > t) i--
+  const s = segs[i]
+  const lo = i === 0 ? Math.max(s.from, floor) : s.from
+  return Math.min(s.to, Math.max(lo, s.from + (t - s.at)))
+}
+
+// The ranges of the file to play from `from`. Inside the selection, playback stops
+// at its end. Before it, Keep mode plays into the selection and stops at its end,
+// while Remove mode skips the selection and carries on, like the exported result.
+// After it, playback runs to the end of the file, so you can listen anywhere.
+function plan(from: number): [number, number][] {
+  const d = audioBuffer!.duration
+  const s = start * d
+  const e = end * d
+  if (from >= e - EPS) return [[from, d]]
+  if (from >= s - EPS || mode === 'keep') return [[from, e]]
+  return e < d - EPS ? [[from, s], [e, d]] : [[from, s]]
+}
+
+function startSource(from: number, floor: number) {
+  const ranges = plan(from)
+  const sources: AudioBufferSourceNode[] = []
+  const segs: Seg[] = []
+  let at = audioCtx.currentTime
+  ranges.forEach(([a, b], i) => {
+    const source = audioCtx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(audioCtx.destination)
+    source.start(at, a, b - a) // (when, offset, duration): ranges play back to back
+    if (i === ranges.length - 1) {
+      source.onended = () => {
+        if (playing?.sources !== sources) return // stopped or replaced, not finished
+        playing = null
+        head = null
+        render()
+      }
+    }
+    sources.push(source)
+    segs.push({ from: a, to: b, at })
+    at += b - a
+  })
+  playing = { sources, segs, floor }
 }
 
 function stopSource() {
-  const source = playing?.source
+  const sources = playing?.sources ?? []
   playing = null // first, so onended knows this wasn't a natural end
-  source?.stop()
+  for (const s of sources) s.stop()
 }
 
-// Playback stops at the end of the selection, unless it starts past it: then it
-// plays to the end of the file, so you can listen anywhere in the track.
-function stopPoint(from: number) {
-  const d = audioBuffer!.duration
-  return from < end * d - EPS ? end * d : d
-}
-
-// Plays from the playhead, or from the start of the selection if there's no
-// playhead (or it sits at the very end of the selection or the file).
+// Plays from the playhead. Without one (or with it at the very end of the selection
+// or the file), it plays what you'd export: the selection in Keep mode, the whole
+// result from the beginning in Remove mode.
 function play() {
   if (!audioBuffer || !commitTyped() || !hasSelection()) return
   const d = audioBuffer.duration
   const atEnd = head !== null && (Math.abs(head - end * d) < 0.01 || head > d - MIN_SEL_SEC)
-  void playFrom(head === null || atEnd ? start * d : head)
-  track('play-selection')
+  const from = mode === 'keep' ? start * d : 0
+  void playFrom(head === null || atEnd ? from : head)
+  track('play-selection', { mode })
 }
 
 async function playFrom(from: number) {
@@ -457,7 +508,7 @@ async function playFrom(from: number) {
   if (id !== playId || !audioBuffer) return
   stopSource()
   head = null
-  startSource(from, stopPoint(from), from)
+  startSource(from, from)
   render()
   requestAnimationFrame(tick)
 }
@@ -468,7 +519,7 @@ function seek(t: number) {
   t = Math.min(Math.max(0, t), audioBuffer.duration - MIN_SEL_SEC)
   if (playing) {
     stopSource()
-    startSource(t, stopPoint(t), t)
+    startSource(t, t)
   } else {
     head = t
   }
@@ -490,16 +541,21 @@ function tick() {
   requestAnimationFrame(tick)
 }
 
-// Call after the selection changes: playback then stops at the new end instead.
+// Call after the selection or mode changes: if what's left to play is different
+// now, carry on from the same spot with the new plan.
 function syncPlayback() {
   if (!audioBuffer || !playing) return
-  const raw = rawPosition(playing)
-  const to = stopPoint(raw)
-  if (Math.abs(playing.to - to) <= EPS) return
-  if (raw >= to) return stop()
+  const raw = rawPosition()
+  const now = playing.segs.filter(s => s.to > raw + EPS).map(s => [s.from, s.to])
+  const next = plan(raw)
+  const same =
+    now.length === next.length &&
+    now.every(([a, b], i) => (i === 0 || Math.abs(a - next[i][0]) <= EPS) && Math.abs(b - next[i][1]) <= EPS)
+  if (same) return
   const { floor } = playing
+  if (next[next.length - 1][1] - raw < 0.005) return stop() // nothing left to play
   stopSource()
-  startSource(raw, to, floor) // carry on from here to the new stop point
+  startSource(raw, floor)
 }
 
 function updateHead() {
@@ -560,19 +616,66 @@ window.addEventListener('keydown', e => {
   if (!e.repeat) togglePlay()
 })
 
-wavBtn.addEventListener('click', () => {
-  if (!audioBuffer || !commitTyped() || !hasSelection()) return
-  const blob = encodeWav(audioBuffer, start, end)
-  download(blob, `${baseName}-trimmed.wav`)
-  track('export-wav', { length: lengthBucket((end - start) * audioBuffer.duration) })
+modeInputs.forEach(input => {
+  input.addEventListener('change', () => {
+    if (!input.checked) return
+    mode = input.value as 'keep' | 'remove'
+    status.textContent = ''
+    syncPlayback()
+    render()
+  })
 })
 
-function encodeWav(buf: AudioBuffer, startFrac: number, endFrac: number): Blob {
-  const ch = buf.numberOfChannels
-  const rate = buf.sampleRate
-  const from = Math.floor(startFrac * buf.length)
-  const to = Math.floor(endFrac * buf.length)
-  const frames = to - from
+// --- Export ---
+
+// The exported audio as a list of pieces, each one an array of channels. Pieces
+// mostly point into the original audio (subarray doesn't copy), so cutting a long
+// song doesn't need a second copy of it in memory. Only the short crossfade where
+// the two parts of a Remove meet is new data.
+type Piece = Float32Array[]
+
+function resultPieces(buf: AudioBuffer): Piece[] {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c))
+  const part = (a: number, b: number): Piece => chans.map(d => d.subarray(a, b))
+  const from = Math.floor(start * buf.length)
+  const to = Math.floor(end * buf.length)
+  if (mode === 'keep') return [part(from, to)]
+
+  const n = buf.length
+  const xf = Math.min(Math.round(JOIN_SEC * buf.sampleRate), from, n - to)
+  const pieces: Piece[] = []
+  if (from - xf > 0) pieces.push(part(0, from - xf))
+  if (xf > 0) {
+    // fade the end of the first part out while the start of the second fades in
+    pieces.push(chans.map(d => {
+      const out = new Float32Array(xf)
+      for (let i = 0; i < xf; i++) {
+        const k = (i + 0.5) / xf
+        out[i] = d[from - xf + i] * (1 - k) + d[to + i] * k
+      }
+      return out
+    }))
+  }
+  if (to + xf < n) pieces.push(part(to + xf, n))
+  return pieces
+}
+
+const frameCount = (pieces: Piece[]) => pieces.reduce((n, p) => n + p[0].length, 0)
+
+function exportName(ext: string) {
+  return `${baseName}-${mode === 'keep' ? 'trimmed' : 'cut'}.${ext}`
+}
+
+wavBtn.addEventListener('click', () => {
+  if (!audioBuffer || !commitTyped() || !hasSelection()) return
+  const blob = encodeWav(resultPieces(audioBuffer), audioBuffer.sampleRate)
+  download(blob, exportName('wav'))
+  track('export-wav', { mode, length: lengthBucket(resultLength()) })
+})
+
+function encodeWav(pieces: Piece[], rate: number): Blob {
+  const ch = pieces[0].length
+  const frames = frameCount(pieces)
 
   const bytesPerSample = 2 // 16-bit PCM
   const dataSize = frames * ch * bytesPerSample
@@ -598,13 +701,15 @@ function encodeWav(buf: AudioBuffer, startFrac: number, endFrac: number): Blob {
   view.setUint32(40, dataSize, true)
 
   // Samples: interleave channels (L R L R ...), float -1..1 to int16
-  const channels = Array.from({ length: ch }, (_, c) => buf.getChannelData(c))
   let offset = 44
-  for (let i = from; i < to; i++) {
-    for (let c = 0; c < ch; c++) {
-      const s = Math.max(-1, Math.min(1, channels[c][i]))
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
-      offset += 2
+  for (const channels of pieces) {
+    const len = channels[0].length
+    for (let i = 0; i < len; i++) {
+      for (let c = 0; c < ch; c++) {
+        const s = Math.max(-1, Math.min(1, channels[c][i]))
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+        offset += 2
+      }
     }
   }
   return new Blob([view], { type: 'audio/wav' })
@@ -628,14 +733,15 @@ mp3Btn.addEventListener('click', async () => {
   updateButtons()
   try {
     const blob = await encodeMp3(
-      audioBuffer, start, end, Number(kbpsSel.value),
+      resultPieces(audioBuffer), audioBuffer.sampleRate, Number(kbpsSel.value),
       pct => { status.textContent = `Encoding ${pct}%` }
     )
     status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
-    download(blob, `${baseName}-trimmed.mp3`)
+    download(blob, exportName('mp3'))
     track('export-mp3', {
+      mode,
       kbps: kbpsSel.value,
-      length: lengthBucket((end - start) * audioBuffer.duration),
+      length: lengthBucket(resultLength()),
     })
   } catch {
     status.textContent = 'Encoding failed.'
@@ -656,30 +762,32 @@ function toInt16(f: Float32Array, from: number, to: number): Int16Array {
 }
 
 async function encodeMp3(
-  buf: AudioBuffer, startFrac: number, endFrac: number,
+  pieces: Piece[], rate: number,
   kbps: number, onProgress: (pct: number) => void
 ): Promise<Blob> {
-  const from = Math.floor(startFrac * buf.length)
-  const to = Math.floor(endFrac * buf.length)
-  const ch = Math.min(2, buf.numberOfChannels)    // lamejs handles mono or stereo
-  const encoder = new Mp3Encoder(ch, buf.sampleRate, kbps)
-
-  const left = buf.getChannelData(0)
-  const right = ch === 2 ? buf.getChannelData(1) : null
+  const ch = Math.min(2, pieces[0].length)        // lamejs handles mono or stereo
+  const encoder = new Mp3Encoder(ch, rate, kbps)
 
   const CHUNK = 1152 * 10                          // 1152 = samples per MP3 frame
   const parts: Uint8Array[] = []
+  const total = frameCount(pieces)
+  let done = 0
 
-  for (let i = from; i < to; i += CHUNK) {
-    const j = Math.min(i + CHUNK, to)
-    const l = toInt16(left, i, j)
-    const out = right
-      ? encoder.encodeBuffer(l, toInt16(right, i, j))
-      : encoder.encodeBuffer(l)
-    if (out.length) parts.push(out)
+  for (const piece of pieces) {
+    const [left, right] = piece
+    const len = left.length
+    for (let i = 0; i < len; i += CHUNK) {
+      const j = Math.min(i + CHUNK, len)
+      const l = toInt16(left, i, j)
+      const out = ch === 2
+        ? encoder.encodeBuffer(l, toInt16(right, i, j))
+        : encoder.encodeBuffer(l)
+      if (out.length) parts.push(out)
 
-    onProgress(Math.round(((j - from) / (to - from)) * 100))
-    await new Promise(r => setTimeout(r))          // yield so the UI can repaint
+      done += j - i
+      onProgress(Math.round((done / total) * 100))
+      await new Promise(r => setTimeout(r))        // yield so the UI can repaint
+    }
   }
 
   const tail = encoder.flush()

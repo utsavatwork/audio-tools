@@ -27,7 +27,7 @@
     <!-- the tool's markup lives here, not in the script, so the page appears complete -->
     <main id="app">
       <h1>Audio Cutter</h1>
-      <p class="sub">Trim audio or video files in your browser. Your files never leave your device.</p>
+      <p class="sub">Trim audio or video files, or cut a part out, right in your browser. Your files never leave your device.</p>
 
       <label id="drop" class="drop">
         <input type="file" id="file" accept="audio/*,video/*" hidden />
@@ -43,6 +43,11 @@
           </div>
           <button id="change-file">Change file</button>
         </div>
+        <fieldset class="mode">
+          <legend class="visually-hidden">What to export</legend>
+          <label><input type="radio" name="mode" value="keep" checked /> Keep selection</label>
+          <label><input type="radio" name="mode" value="remove" /> Remove selection</label>
+        </fieldset>
         <div class="wave">
           <canvas id="wave" width="900" height="160"
             style="touch-action:none;cursor:ew-resize"></canvas>
@@ -61,7 +66,7 @@
             <button class="set" data-set="start" disabled>Set start here</button>
           </div>
           <div class="clip">
-            <p>Clip length <strong id="clip-length"></strong></p>
+            <p><span id="clip-label">Clip length</span> <strong id="clip-length"></strong></p>
             <p id="pos"></p>
           </div>
           <div class="time">

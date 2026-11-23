@@ -120,6 +120,45 @@ canvas {
   background: currentColor;
   transform: translate(-50%, -2px);
 }
+/* Keep / Remove: two radio buttons styled as one segmented switch */
+.mode {
+  display: inline-flex;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid #646cff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mode label {
+  padding: 10px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.mode label + label {
+  border-left: 1px solid #646cff;
+}
+.mode input {
+  position: absolute;
+  opacity: 0; /* hidden but still focusable and usable with arrow keys */
+  pointer-events: none;
+}
+.mode label:has(input:checked) {
+  background: #535bf2;
+  color: #fff;
+}
+.mode:has(input:focus-visible) {
+  outline: 2px solid #646cff;
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .mode {
+    display: flex;
+  }
+  .mode label {
+    flex: 1;
+  }
+}
 .hint {
   margin: 6px 0 0;
   font-size: 0.85rem;

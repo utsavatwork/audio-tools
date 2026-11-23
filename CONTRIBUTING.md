@@ -51,8 +51,8 @@ Rules:
 | `file-loaded` | file type, length bucket (e.g. `1-5min`) |
 | `file-unreadable` | file type |
 | `file-too-large` | file type |
-| `play-selection` | none |
-| `export-mp3` | bitrate, length bucket of the clip |
-| `export-wav` | length bucket of the clip |
+| `play-selection` | mode (`keep` or `remove`) |
+| `export-mp3` | mode, bitrate, length bucket of the result |
+| `export-wav` | mode, length bucket of the result |
 | `export-failed` | format |
 | `vote` | feature id from the Coming soon section (e.g. `vocal-remover`) |

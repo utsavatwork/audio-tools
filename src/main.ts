@@ -25,8 +25,11 @@ app.innerHTML = `
       </div>
       <button id="change-file">Change file</button>
     </div>
-    <canvas id="wave" width="900" height="160"
-      style="touch-action:none;cursor:ew-resize"></canvas>
+    <div class="wave">
+      <canvas id="wave" width="900" height="160"
+        style="touch-action:none;cursor:ew-resize"></canvas>
+      <div id="head" hidden></div>
+    </div>
     <div class="times">
       <div class="time">
         <label for="start-time">Start</label>
@@ -36,8 +39,12 @@ app.innerHTML = `
             enterkeyhint="done" aria-describedby="time-msg" />
           <button data-edge="start" data-step="0.1" aria-label="Move start forward 0.1 seconds">+</button>
         </div>
+        <button class="set" data-set="start" disabled>Set start here</button>
       </div>
-      <p class="clip">Clip length <strong id="clip-length"></strong></p>
+      <div class="clip">
+        <p>Clip length <strong id="clip-length"></strong></p>
+        <p id="pos"></p>
+      </div>
       <div class="time">
         <label for="end-time">End</label>
         <div class="stepper">
@@ -46,13 +53,13 @@ app.innerHTML = `
             enterkeyhint="done" aria-describedby="time-msg" />
           <button data-edge="end" data-step="0.1" aria-label="Move end forward 0.1 seconds">+</button>
         </div>
+        <button class="set" data-set="end" disabled>Set end here</button>
       </div>
     </div>
     <p id="time-msg" aria-live="polite"></p>
     <div class="toolbar">
       <div class="group playback">
         <button id="play">Play selection</button>
-        <button id="stop">Stop</button>
       </div>
       <div class="group export">
         <select id="kbps" aria-label="MP3 quality">
@@ -80,7 +87,10 @@ const clipLength = document.querySelector<HTMLElement>('#clip-length')!
 const timeMsg = document.querySelector<HTMLParagraphElement>('#time-msg')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
-const stopBtn = document.querySelector<HTMLButtonElement>('#stop')!
+const headEl = document.querySelector<HTMLDivElement>('#head')!
+const posText = document.querySelector<HTMLParagraphElement>('#pos')!
+const setStartBtn = document.querySelector<HTMLButtonElement>('[data-set=start]')!
+const setEndBtn = document.querySelector<HTMLButtonElement>('[data-set=end]')!
 const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
 const mp3Btn = document.querySelector<HTMLButtonElement>('#export-mp3')!
 const kbpsSel = document.querySelector<HTMLSelectElement>('#kbps')!
@@ -96,7 +106,17 @@ let start = 0 // selection as fractions of the track (0..1)
 let end = 1
 let drag: 'start' | 'end' | 'new' | null = null
 let anchor = 0
-let source: AudioBufferSourceNode | null = null
+// What's playing now. `from`/`to` are seconds in the file, `at` is the audio clock
+// time when `from` started, `floor` is where the user pressed Play.
+let playing: {
+  source: AudioBufferSourceNode
+  from: number
+  to: number
+  at: number
+  floor: number
+} | null = null
+let playId = 0 // cancels a Play that's still waiting for the audio to wake up
+let head: number | null = null // where playback was stopped, in seconds
 let prevSel = { start: 0, end: 1 } // restored if a click makes no real selection
 let encoding = false
 const typed = { start: false, end: false } // boxes with typing not applied yet
@@ -121,7 +141,8 @@ function hasSelection() {
 
 function updateButtons() {
   const ok = hasSelection() && !timeInvalid
-  playBtn.disabled = !ok
+  playBtn.disabled = !ok && !playing // it's the Stop button while playing
+  playBtn.textContent = playing ? 'Stop' : 'Play selection'
   wavBtn.disabled = !ok
   mp3Btn.disabled = !ok || encoding
 }
@@ -146,6 +167,7 @@ async function loadFile(file: File) {
     start = 0
     end = 1
     discardTyped()
+    head = null
     times.classList.toggle('hours', audioBuffer.duration >= 3600)
     status.textContent = ''
     drop.hidden = true // the file bar's "Change file" takes over from here
@@ -263,6 +285,7 @@ function render() {
     if (!typed.end) endInput.value = formatTime(end * d)
     clipLength.textContent = formatTime((end - start) * d)
   }
+  updateHead()
   updateButtons()
 }
 
@@ -321,6 +344,7 @@ function commitTyped(): boolean {
   end = e / d
   discardTyped()
   timeMsg.textContent = note
+  syncPlayback()
   render()
   return true
 }
@@ -335,6 +359,7 @@ function nudge(edge: Edge, by: number) {
   } else {
     end = Math.min(d, Math.max(end * d + by, start * d + MIN_SEL_SEC)) / d
   }
+  syncPlayback()
   render()
 }
 
@@ -360,7 +385,10 @@ for (const edge of ['start', 'end'] as const) {
 }
 
 document.querySelectorAll<HTMLButtonElement>('button[data-edge]').forEach(b => {
-  b.addEventListener('click', () => nudge(b.dataset.edge as Edge, Number(b.dataset.step)))
+  b.addEventListener('click', e => {
+    nudge(b.dataset.edge as Edge, Number(b.dataset.step))
+    releaseFocus(e)
+  })
 })
 
 // --- Dragging on the waveform ---
@@ -405,29 +433,150 @@ function endDrag() {
   // a plain click (or a tiny drag) shouldn't wipe out the current selection
   if (drag === 'new' && !hasSelection()) ({ start, end } = prevSel)
   drag = null
+  syncPlayback()
   render()
 }
 canvas.addEventListener('pointerup', endDrag)
 canvas.addEventListener('pointercancel', endDrag)
 
-playBtn.addEventListener('click', async () => {
-  if (!audioBuffer || !commitTyped() || !hasSelection()) return
-  stop()
-  await audioCtx.resume() // browsers keep audio suspended until a user gesture
-  source = audioCtx.createBufferSource()
+// --- Playback ---
+
+// Where we are in the file, in seconds, or null if there's no playhead. Uses what
+// you hear right now: Bluetooth headphones can lag a fraction of a second behind.
+function position(): number | null {
+  if (!playing) return head
+  const heard = rawPosition(playing) - (audioCtx.outputLatency || 0)
+  return Math.min(playing.to, Math.max(playing.floor, heard))
+}
+
+function rawPosition(p: { from: number; at: number }) {
+  return p.from + (audioCtx.currentTime - p.at)
+}
+
+function startSource(from: number, to: number, floor: number) {
+  const source = audioCtx.createBufferSource()
   source.buffer = audioBuffer
   source.connect(audioCtx.destination)
-  const d = audioBuffer.duration
-  source.start(0, start * d, (end - start) * d) // (when, offset, duration)
-  track('play-selection')
-})
-
-stopBtn.addEventListener('click', stop)
-
-function stop() {
-  source?.stop()
-  source = null
+  source.onended = () => {
+    if (playing?.source !== source) return // stopped or replaced, not finished
+    playing = null
+    head = null
+    render()
+  }
+  source.start(0, from, to - from) // (when, offset, duration)
+  playing = { source, from, to, at: audioCtx.currentTime, floor }
 }
+
+function stopSource() {
+  const source = playing?.source
+  playing = null // first, so onended knows this wasn't a natural end
+  source?.stop()
+}
+
+async function play() {
+  if (!audioBuffer || !commitTyped() || !hasSelection()) return
+  const id = ++playId
+  await audioCtx.resume() // browsers keep audio suspended until a user gesture
+  if (id !== playId || !audioBuffer || !hasSelection()) return
+  stopSource()
+  const d = audioBuffer.duration
+  startSource(start * d, end * d, start * d)
+  render()
+  requestAnimationFrame(tick)
+  track('play-selection')
+}
+
+// The playhead stays where you stopped, so you can still "Set start/end here".
+function stop() {
+  playId++
+  if (!playing) return
+  head = position()
+  stopSource()
+  render()
+}
+
+function tick() {
+  if (!playing) return
+  updateHead()
+  requestAnimationFrame(tick)
+}
+
+// Call after the selection changes: keeps playback and playhead inside it.
+function syncPlayback() {
+  if (!audioBuffer) return
+  const s = start * audioBuffer.duration
+  const e = end * audioBuffer.duration
+  const pos = position()
+  if (pos === null) return
+  if (pos < s - EPS || pos > e + EPS) {
+    stop()
+    head = null
+  } else if (playing && Math.abs(playing.to - e) > EPS) {
+    const raw = rawPosition(playing)
+    const { floor } = playing
+    if (raw >= e) return stop()
+    stopSource()
+    startSource(raw, e, floor) // carry on from here to the new end
+  }
+}
+
+function updateHead() {
+  const pos = position()
+  headEl.hidden = pos === null
+  posText.textContent =
+    pos === null ? '' : `${playing ? 'Playing' : 'Stopped at'} ${formatTime(pos)}`
+  if (!audioBuffer || pos === null) {
+    setStartBtn.disabled = setEndBtn.disabled = true
+    return
+  }
+  const d = audioBuffer.duration
+  headEl.style.left = `${(pos / d) * 100}%`
+  // a start at the end (or the reverse) would leave nothing to play
+  setStartBtn.disabled = end * d - pos < MIN_SEL_SEC
+  setEndBtn.disabled = pos - start * d < MIN_SEL_SEC
+}
+
+function setHere(edge: Edge) {
+  const pos = position()
+  if (!audioBuffer || pos === null) return
+  discardTyped() // the playhead replaces anything half-typed
+  if (edge === 'start') {
+    start = pos / audioBuffer.duration
+    if (playing) playing.floor = pos // keeps playing, now from the new start
+  } else {
+    stop() // the clip now ends right here
+    head = pos
+    end = pos / audioBuffer.duration
+  }
+  render()
+}
+
+// After a mouse click or tap, let go of the button so the spacebar plays the clip
+// instead of pressing it again. Keyboard users (detail 0) keep their place.
+function releaseFocus(e: MouseEvent) {
+  if (e.detail) (e.currentTarget as HTMLElement).blur()
+}
+
+const togglePlay = () => (playing ? stop() : play())
+
+playBtn.addEventListener('click', e => {
+  togglePlay()
+  releaseFocus(e)
+})
+for (const b of [setStartBtn, setEndBtn]) {
+  b.addEventListener('click', e => {
+    setHere(b.dataset.set as Edge)
+    releaseFocus(e)
+  })
+}
+
+window.addEventListener('keydown', e => {
+  if (e.key !== ' ' || editor.hidden || e.ctrlKey || e.metaKey || e.altKey) return
+  // leave the spacebar alone in fields and on focused buttons and links
+  if ((e.target as Element).closest?.('input, select, textarea, button, a')) return
+  e.preventDefault() // don't scroll the page
+  if (!e.repeat) togglePlay()
+})
 
 wavBtn.addEventListener('click', () => {
   if (!audioBuffer || !commitTyped() || !hasSelection()) return

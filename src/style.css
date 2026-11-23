@@ -89,6 +89,21 @@ canvas {
   border-radius: 8px;
   background: rgba(128, 128, 128, 0.12);
 }
+.wave {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+#head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: currentColor;
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.5); /* visible on dim areas too */
+  pointer-events: none; /* drags go to the waveform underneath */
+}
 
 button,
 select {
@@ -135,7 +150,7 @@ button.primary {
 .times {
   display: grid;
   grid-template-columns: 190px 1fr 190px;
-  align-items: end;
+  align-items: start;
   gap: 12px;
   margin-top: 12px;
   font-variant-numeric: tabular-nums;
@@ -182,9 +197,21 @@ button.primary {
   font: inherit; /* at least 16px, or iOS zooms in on focus */
   text-align: center;
 }
+.set {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+}
 .clip {
-  margin: 0;
+  padding-top: 22px; /* lines up with the boxes, below their labels */
+}
+.clip p {
+  min-height: 44px; /* reserved, so the position doesn't move things */
+  margin: 0 0 8px;
   line-height: 44px;
+}
+#play {
+  min-width: 140px; /* same width for "Play selection" and "Stop" */
 }
 #time-msg {
   min-height: 1.4em; /* reserved, so a message doesn't move the buttons */
@@ -214,6 +241,11 @@ button.primary {
   .clip {
     order: 1; /* below both boxes */
     grid-column: 1 / -1;
+    padding-top: 0;
+  }
+  .clip p {
+    min-height: 1.4em;
+    margin: 0;
     line-height: 1.4;
   }
   .toolbar {
@@ -223,6 +255,7 @@ button.primary {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
+  #play,
   #export-wav {
     grid-column: 1 / -1;
   }

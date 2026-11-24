@@ -2,7 +2,12 @@
 @view-transition {
   navigation: auto;
 }
+/* Sizes. Phones and tablets keep 44px controls (big enough for fingers); with a
+   mouse on a wider screen everything is a size smaller. */
 :root {
+  --ctl: 44px; /* height of buttons, boxes and menus */
+  --pad: 10px 16px; /* padding inside buttons */
+  --wave: 160px; /* waveform height */
   color-scheme: light dark;
   font-family:
     system-ui,
@@ -27,7 +32,7 @@ body {
 
 h1 {
   margin: 0 0 4px;
-  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  font-size: clamp(1.8rem, 6vw, 2.3rem);
 }
 .sub {
   margin: 0 0 24px;
@@ -89,7 +94,7 @@ h1 {
 canvas {
   display: block;
   width: 100%;
-  height: 160px; /* fixed height; the pixel buffer is sized from JS */
+  height: var(--wave); /* fixed height; the pixel buffer is sized from JS */
   border-radius: 8px;
   background: rgba(128, 128, 128, 0.12);
 }
@@ -130,8 +135,8 @@ canvas {
   overflow: hidden;
 }
 .mode label {
-  padding: 10px 16px;
-  min-height: 44px;
+  padding: var(--pad);
+  min-height: var(--ctl);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -167,7 +172,7 @@ canvas {
 
 button,
 select {
-  padding: 10px 16px;
+  padding: var(--pad);
   font-size: 1rem;
   border-radius: 8px;
   border: 1px solid #646cff;
@@ -204,7 +209,7 @@ button.primary {
 }
 .toolbar button,
 .toolbar select {
-  min-height: 44px; /* same height, and big enough for fingers */
+  min-height: var(--ctl); /* same height, and big enough for fingers */
   white-space: nowrap;
 }
 .times {
@@ -238,8 +243,8 @@ button.primary {
   border-color: #e5534b;
 }
 .stepper button {
-  flex: 0 0 44px;
-  min-height: 44px;
+  flex: 0 0 var(--ctl);
+  min-height: var(--ctl);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -259,16 +264,16 @@ button.primary {
 }
 .set {
   width: 100%;
-  min-height: 44px;
+  min-height: var(--ctl);
   margin-top: 8px;
 }
 .clip {
   padding-top: 22px; /* lines up with the boxes, below their labels */
 }
 .clip p {
-  min-height: 44px; /* reserved, so the position doesn't move things */
+  min-height: var(--ctl); /* reserved, so the position doesn't move things */
   margin: 0 0 8px;
-  line-height: 44px;
+  line-height: var(--ctl);
 }
 #play {
   min-width: 140px; /* same width for "Play" and "Stop" */
@@ -286,7 +291,7 @@ button.primary {
   gap: 12px;
 }
 .fade select {
-  min-height: 44px;
+  min-height: var(--ctl);
 }
 .fade select:disabled {
   opacity: 0.4;
@@ -296,7 +301,7 @@ button.primary {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  min-height: var(--ctl);
   cursor: pointer;
   touch-action: manipulation;
   white-space: nowrap;
@@ -397,7 +402,7 @@ a {
 }
 a.button {
   display: inline-block;
-  padding: 10px 16px;
+  padding: var(--pad);
   border: 1px solid #646cff;
   border-radius: 8px;
   text-decoration: none;
@@ -432,7 +437,7 @@ a.button {
 }
 .hero h1 {
   margin: 0 0 8px;
-  font-size: clamp(2rem, 7vw, 3rem);
+  font-size: clamp(2rem, 7vw, 2.7rem);
 }
 .hero .sub {
   max-width: 560px;
@@ -454,7 +459,7 @@ a.card.tool h3 {
 }
 a.card.tool .button {
   align-self: flex-start;
-  padding: 10px 16px;
+  padding: var(--pad);
   border: 1px solid #535bf2;
   border-radius: 8px;
   background: #535bf2;
@@ -570,4 +575,29 @@ a.card.tool .button {
   text-align: center;
   font-size: 0.9rem;
   opacity: 0.7;
+}
+
+/* mouse and a wider screen: one size smaller (rem sizes follow the root font size) */
+@media (hover: hover) and (pointer: fine) and (min-width: 701px) {
+  :root {
+    font-size: 15px;
+    --ctl: 36px;
+    --pad: 6px 14px;
+    --wave: 130px;
+  }
+  .switch input {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+  }
+  .switch input::before {
+    width: 14px;
+    height: 14px;
+  }
+  .switch input:checked::before {
+    transform: translateX(16px);
+  }
+  .clip {
+    padding-top: 20px;
+  }
 }

@@ -15,6 +15,10 @@ const endInput = document.querySelector<HTMLInputElement>('#end-time')!
 const clipLength = document.querySelector<HTMLElement>('#clip-length')!
 const clipLabel = document.querySelector<HTMLElement>('#clip-label')!
 const modeInputs = document.querySelectorAll<HTMLInputElement>('input[name=mode]')
+const fadeInBox = document.querySelector<HTMLInputElement>('#fade-in')!
+const fadeOutBox = document.querySelector<HTMLInputElement>('#fade-out')!
+const fadeInSec = document.querySelector<HTMLSelectElement>('#fade-in-sec')!
+const fadeOutSec = document.querySelector<HTMLSelectElement>('#fade-out-sec')!
 const timeMsg = document.querySelector<HTMLParagraphElement>('#time-msg')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
@@ -49,6 +53,7 @@ let playing: {
   sources: AudioBufferSourceNode[]
   segs: Seg[]
   floor: number
+  fades: string // fadeKey() the gain was scheduled with
 } | null = null
 let playId = 0 // cancels a Play that's still waiting for the audio to wake up
 let head: number | null = null // playhead while not playing, in seconds
@@ -83,6 +88,57 @@ function resultLength() {
   const before = start * d
   const after = d - end * d
   return before + after - Math.min(JOIN_SEC, before, after)
+}
+
+// --- Fades ---
+
+// Fade lengths in seconds (0 = off). Each is at most half of the result, so a short
+// clip still fades all the way in and out.
+function fadeLens() {
+  const half = resultLength() / 2
+  return {
+    fin: fadeInBox.checked ? Math.min(Number(fadeInSec.value), half) : 0,
+    fout: fadeOutBox.checked ? Math.min(Number(fadeOutSec.value), half) : 0,
+  }
+}
+
+// Volume (0..1) at `r` seconds into the result
+function fadeGain(r: number) {
+  const L = resultLength()
+  const { fin, fout } = fadeLens()
+  let g = 1
+  if (fin > 0 && r < fin) g = Math.max(0, r / fin)
+  if (fout > 0 && r > L - fout) g = Math.min(g, Math.max(0, (L - r) / fout))
+  return g
+}
+
+// Where a point of the file (in seconds) ends up in the result, or null if it isn't
+// exported. Right at a cut, `side` says which side of it we mean.
+function toResult(p: number, side: 'left' | 'right'): number | null {
+  const d = audioBuffer!.duration
+  const s = start * d
+  const e = end * d
+  if (mode === 'keep') {
+    const inside = side === 'left' ? p > s + EPS && p <= e + EPS : p >= s - EPS && p < e - EPS
+    return inside ? p - s : null
+  }
+  if (side === 'left' ? p <= s + EPS : p < s - EPS) return p
+  if (side === 'left' ? p > e + EPS : p >= e - EPS) {
+    return p - (e - s) - Math.min(JOIN_SEC, s, d - e) // the parts overlap by the crossfade
+  }
+  return null
+}
+
+// Volume at a point of the file while previewing: parts that aren't exported play as they are
+function gainAt(p: number, side: 'left' | 'right') {
+  const r = toResult(p, side)
+  return r === null ? 1 : fadeGain(r)
+}
+
+// Changes whenever the fades would sound different, so playback can be rescheduled
+function fadeKey() {
+  const { fin, fout } = fadeLens()
+  return fin || fout ? [mode, start, end, fin, fout].join() : ''
 }
 
 function updateButtons() {
@@ -223,6 +279,20 @@ function render() {
     g.fillRect(start * w, 0, (end - start) * w, h)
     g.fillStyle = 'rgba(229,83,75,0.25)' // and tint it red: this part gets cut
     g.fillRect(start * w, 0, (end - start) * w, h)
+  }
+
+  // fades: darken from the top and bottom, so the waveform narrows to nothing
+  const { fin, fout } = audioBuffer ? fadeLens() : { fin: 0, fout: 0 }
+  if (audioBuffer && (fin || fout)) {
+    const d = audioBuffer.duration
+    g.fillStyle = 'rgba(0,0,0,0.6)'
+    for (let x = 0; x < w; x++) {
+      const k = gainAt(((x + 0.5) / w) * d, 'right')
+      if (k >= 1) continue
+      const cut = (h * (1 - k)) / 2
+      g.fillRect(x, 0, 1, cut)
+      g.fillRect(x, h - cut, 1, cut)
+    }
   }
 
   // handles: 3 CSS px wide, whatever the pixel density
@@ -467,7 +537,9 @@ function startSource(from: number, floor: number) {
   ranges.forEach(([a, b], i) => {
     const source = audioCtx.createBufferSource()
     source.buffer = audioBuffer
-    source.connect(audioCtx.destination)
+    const gain = audioCtx.createGain() // plays the fades
+    scheduleFades(gain.gain, a, b, at)
+    source.connect(gain).connect(audioCtx.destination)
     source.start(at, a, b - a) // (when, offset, duration): ranges play back to back
     if (i === ranges.length - 1) {
       source.onended = () => {
@@ -481,7 +553,33 @@ function startSource(from: number, floor: number) {
     segs.push({ from: a, to: b, at })
     at += b - a
   })
-  playing = { sources, segs, floor }
+  playing = { sources, segs, floor, fades: fadeKey() }
+}
+
+// Volume changes while the file plays from `a` to `b` seconds, starting at audio time
+// `at`. The volume is a straight line between the points where a fade starts or ends,
+// with a jump where Keep mode plays into the selection from before it.
+function scheduleFades(param: AudioParam, a: number, b: number, at: number) {
+  const d = audioBuffer!.duration
+  const s = start * d
+  const e = end * d
+  const L = resultLength()
+  const { fin, fout } = fadeLens()
+  const pts = [a, b, s, e]
+  for (const r of [fin, L - fout]) {
+    // the file positions that end up `r` seconds into the result
+    if (mode === 'keep') pts.push(s + r)
+    else pts.push(r, r + (e - s) + Math.min(JOIN_SEC, s, d - e))
+  }
+  const inside = [...new Set(pts.filter(p => p >= a && p <= b))].sort((x, y) => x - y)
+  inside.forEach((p, i) => {
+    const t = at + (p - a)
+    if (i === 0) return param.setValueAtTime(gainAt(p, 'right'), t)
+    const left = gainAt(p, 'left')
+    param.linearRampToValueAtTime(left, t)
+    const right = gainAt(p, 'right')
+    if (i < inside.length - 1 && Math.abs(right - left) > EPS) param.setValueAtTime(right, t)
+  })
 }
 
 function stopSource() {
@@ -551,7 +649,7 @@ function syncPlayback() {
   const same =
     now.length === next.length &&
     now.every(([a, b], i) => (i === 0 || Math.abs(a - next[i][0]) <= EPS) && Math.abs(b - next[i][1]) <= EPS)
-  if (same) return
+  if (same && playing.fades === fadeKey()) return
   const { floor } = playing
   if (next[next.length - 1][1] - raw < 0.005) return stop() // nothing left to play
   stopSource()
@@ -616,6 +714,23 @@ window.addEventListener('keydown', e => {
   if (!e.repeat) togglePlay()
 })
 
+for (const [box, sel] of [[fadeInBox, fadeInSec], [fadeOutBox, fadeOutSec]] as const) {
+  box.addEventListener('change', () => {
+    sel.disabled = !box.checked
+    syncPlayback()
+    render()
+  })
+  sel.addEventListener('change', () => {
+    syncPlayback()
+    render()
+  })
+}
+
+const fadeLabel = () => {
+  const { fin, fout } = fadeLens()
+  return fin && fout ? 'both' : fin ? 'in' : fout ? 'out' : 'none'
+}
+
 modeInputs.forEach(input => {
   input.addEventListener('change', () => {
     if (!input.checked) return
@@ -662,15 +777,54 @@ function resultPieces(buf: AudioBuffer): Piece[] {
 
 const frameCount = (pieces: Piece[]) => pieces.reduce((n, p) => n + p[0].length, 0)
 
+// Frames a..b of the result, still pointing into the pieces (no copy)
+function slice(pieces: Piece[], a: number, b: number): Piece[] {
+  const out: Piece[] = []
+  let at = 0
+  for (const p of pieces) {
+    const len = p[0].length
+    const from = Math.max(a, at), to = Math.min(b, at + len)
+    if (from < to) out.push(p.map(c => c.subarray(from - at, to - at)))
+    at += len
+  }
+  return out
+}
+
+// Frames a..b of the result as a new copy, with `gain(i)` applied to frame i
+function faded(pieces: Piece[], a: number, b: number, gain: (i: number) => number): Piece {
+  const parts = slice(pieces, a, b)
+  return pieces[0].map((_, c) => {
+    const out = new Float32Array(b - a)
+    let i = 0
+    for (const p of parts) for (const v of p[c]) out[i] = v * gain(i++)
+    return out
+  })
+}
+
+// Fade the start and end of the result. Only those few seconds are copied.
+function withFades(pieces: Piece[], rate: number): Piece[] {
+  const { fin, fout } = fadeLens()
+  const n = frameCount(pieces)
+  const nIn = Math.min(Math.round(fin * rate), n >> 1)
+  const nOut = Math.min(Math.round(fout * rate), n >> 1)
+  if (!nIn && !nOut) return pieces
+  const out: Piece[] = []
+  if (nIn) out.push(faded(pieces, 0, nIn, i => (i + 0.5) / nIn))
+  out.push(...slice(pieces, nIn, n - nOut))
+  if (nOut) out.push(faded(pieces, n - nOut, n, i => (nOut - i - 0.5) / nOut))
+  return out
+}
+
 function exportName(ext: string) {
   return `${baseName}-${mode === 'keep' ? 'trimmed' : 'cut'}.${ext}`
 }
 
 wavBtn.addEventListener('click', () => {
   if (!audioBuffer || !commitTyped() || !hasSelection()) return
-  const blob = encodeWav(resultPieces(audioBuffer), audioBuffer.sampleRate)
+  const rate = audioBuffer.sampleRate
+  const blob = encodeWav(withFades(resultPieces(audioBuffer), rate), rate)
   download(blob, exportName('wav'))
-  track('export-wav', { mode, length: lengthBucket(resultLength()) })
+  track('export-wav', { mode, fade: fadeLabel(), length: lengthBucket(resultLength()) })
 })
 
 function encodeWav(pieces: Piece[], rate: number): Blob {
@@ -733,13 +887,15 @@ mp3Btn.addEventListener('click', async () => {
   updateButtons()
   try {
     const blob = await encodeMp3(
-      resultPieces(audioBuffer), audioBuffer.sampleRate, Number(kbpsSel.value),
+      withFades(resultPieces(audioBuffer), audioBuffer.sampleRate),
+      audioBuffer.sampleRate, Number(kbpsSel.value),
       pct => { status.textContent = `Encoding ${pct}%` }
     )
     status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
     download(blob, exportName('mp3'))
     track('export-mp3', {
       mode,
+      fade: fadeLabel(),
       kbps: kbpsSel.value,
       length: lengthBucket(resultLength()),
     })

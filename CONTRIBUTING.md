@@ -52,7 +52,7 @@ Rules:
 | `file-unreadable` | file type |
 | `file-too-large` | file type |
 | `play-selection` | mode (`keep` or `remove`) |
-| `export-mp3` | mode, bitrate, length bucket of the result |
-| `export-wav` | mode, length bucket of the result |
+| `export-mp3` | mode, fade (`none`, `in`, `out` or `both`), bitrate, length bucket of the result |
+| `export-wav` | mode, fade, length bucket of the result |
 | `export-failed` | format |
 | `vote` | feature id from the Coming soon section (e.g. `vocal-remover`) |

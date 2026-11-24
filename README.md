@@ -17,6 +17,8 @@ and keep the rest. Download the result as MP3 or WAV.
 - **Trim audio**: drag on the waveform to select a range, or drag the handles to adjust it
 - **Keep or remove**: export only the selection, or cut it out and join the rest
   (with a 10 ms crossfade so there's no click at the join)
+- **Fade in / fade out**: switch on a 1, 2, 3 or 5 s fade at the start or end of the result,
+  shown on the waveform and heard in the preview
 - **Exact times**: type start and end times (`1:23.45` or `83.45`), or nudge them by 0.1 s
 - **Preview** with a moving playhead (spacebar to play or stop): click the waveform to jump
   anywhere, drag the playhead to scrub, and set the start or end at the moment you hear it
@@ -32,7 +34,6 @@ and keep the rest. Download the result as MP3 or WAV.
 | Vocal remover | **Next up** |
 | Tempo & key change | Planned |
 | Audio player | Planned |
-| Fade in / fade out | Planned |
 | Format converter | Planned |
 | Merge audio | Planned |
 | Ringtone maker | Planned |

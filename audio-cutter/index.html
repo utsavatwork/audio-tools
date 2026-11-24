@@ -81,6 +81,26 @@
           </div>
         </div>
         <p id="time-msg" aria-live="polite"></p>
+        <div class="fades">
+          <div class="fade">
+            <label class="switch"><input type="checkbox" id="fade-in" role="switch" /> Fade in</label>
+            <select id="fade-in-sec" aria-label="Fade in length" disabled>
+              <option value="1">1 s</option>
+              <option value="2" selected>2 s</option>
+              <option value="3">3 s</option>
+              <option value="5">5 s</option>
+            </select>
+          </div>
+          <div class="fade">
+            <label class="switch"><input type="checkbox" id="fade-out" role="switch" /> Fade out</label>
+            <select id="fade-out-sec" aria-label="Fade out length" disabled>
+              <option value="1">1 s</option>
+              <option value="2" selected>2 s</option>
+              <option value="3">3 s</option>
+              <option value="5">5 s</option>
+            </select>
+          </div>
+        </div>
         <div class="toolbar">
           <div class="group playback">
             <button id="play">Play</button>

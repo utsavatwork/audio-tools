@@ -243,7 +243,7 @@ button.link {
   text-align: center;
 }
 .hero h1 {
-  font-size: clamp(1.9rem, 7vw, 2.4rem);
+  font-size: 1.4rem; /* small on purpose: the tools are the point, not the name */
 }
 .hero .sub {
   max-width: 520px;

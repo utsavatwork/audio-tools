@@ -23,7 +23,7 @@
       data-domains="mp3playground.com"></script>
   </head>
   <body>
-    <nav class="topnav"><a href="/">&larr; MP3 Playground</a></nav>
+    <nav class="topnav"><a href="/"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg> MP3 Playground</a></nav>
     <!-- the tool's markup lives here, not in the script, so the page appears complete -->
     <main id="app">
       <h1>Audio Cutter</h1>
@@ -31,6 +31,7 @@
 
       <label id="drop" class="drop">
         <input type="file" id="file" accept="audio/*,video/*" hidden />
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg>
         <span>Drop an audio or video file here, or <u>browse</u></span>
       </label>
       <p id="info" aria-live="polite"></p>
@@ -41,19 +42,15 @@
             <strong id="file-name"></strong>
             <span id="file-meta"></span>
           </div>
-          <button id="change-file">Change file</button>
+          <button id="change-file" class="link">Change file</button>
         </div>
-        <fieldset class="mode">
-          <legend class="visually-hidden">What to export</legend>
-          <label><input type="radio" name="mode" value="keep" checked /> Keep selection</label>
-          <label><input type="radio" name="mode" value="remove" /> Remove selection</label>
-        </fieldset>
         <div class="wave">
           <canvas id="wave" width="900" height="160"
+            title="Click to move the playhead, drag to select"
+            aria-label="Waveform. Click to move the playhead, drag to select a part."
             style="touch-action:none;cursor:ew-resize"></canvas>
           <div id="head" hidden></div>
         </div>
-        <p class="hint">Tap to move the playhead · drag it to scrub · drag elsewhere to select</p>
         <div class="times">
           <div class="time">
             <label for="start-time">Start</label>
@@ -63,7 +60,7 @@
                 enterkeyhint="done" aria-describedby="time-msg" />
               <button data-edge="start" data-step="0.1" aria-label="Move start forward 0.1 seconds">+</button>
             </div>
-            <button class="set" data-set="start" disabled>Set start here</button>
+            <button class="set link" data-set="start" aria-label="Set start to the playhead" disabled>Set to playhead</button>
           </div>
           <div class="clip">
             <p><span id="clip-label">Clip length</span> <strong id="clip-length"></strong></p>
@@ -77,14 +74,19 @@
                 enterkeyhint="done" aria-describedby="time-msg" />
               <button data-edge="end" data-step="0.1" aria-label="Move end forward 0.1 seconds">+</button>
             </div>
-            <button class="set" data-set="end" disabled>Set end here</button>
+            <button class="set link" data-set="end" aria-label="Set end to the playhead" disabled>Set to playhead</button>
           </div>
         </div>
         <p id="time-msg" aria-live="polite"></p>
-        <div class="fades">
+        <div class="options">
+          <fieldset class="mode">
+            <legend class="visually-hidden">What to export</legend>
+            <label><input type="radio" name="mode" value="keep" checked /> Keep selection</label>
+            <label><input type="radio" name="mode" value="remove" /> Remove selection</label>
+          </fieldset>
           <div class="fade">
             <label class="switch"><input type="checkbox" id="fade-in" role="switch" /> Fade in</label>
-            <select id="fade-in-sec" aria-label="Fade in length" disabled>
+            <select id="fade-in-sec" aria-label="Fade in length" hidden>
               <option value="1">1 s</option>
               <option value="2" selected>2 s</option>
               <option value="3">3 s</option>
@@ -93,7 +95,7 @@
           </div>
           <div class="fade">
             <label class="switch"><input type="checkbox" id="fade-out" role="switch" /> Fade out</label>
-            <select id="fade-out-sec" aria-label="Fade out length" disabled>
+            <select id="fade-out-sec" aria-label="Fade out length" hidden>
               <option value="1">1 s</option>
               <option value="2" selected>2 s</option>
               <option value="3">3 s</option>
@@ -102,17 +104,15 @@
           </div>
         </div>
         <div class="toolbar">
-          <div class="group playback">
-            <button id="play">Play</button>
-          </div>
-          <div class="group export">
-            <select id="kbps" aria-label="MP3 quality">
-              <option value="128">128 kbps</option>
-              <option value="192" selected>192 kbps</option>
-              <option value="320">320 kbps</option>
+          <button id="play"><svg class="icon solid i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg><svg class="icon solid i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg><span id="play-label">Play</span></button>
+          <div class="group">
+            <select id="format" aria-label="Format">
+              <option value="128">MP3 · 128 kbps</option>
+              <option value="192" selected>MP3 · 192 kbps</option>
+              <option value="320">MP3 · 320 kbps</option>
+              <option value="wav">WAV · lossless</option>
             </select>
-            <button id="export-mp3" class="primary">Download MP3</button>
-            <button id="export-wav">Download WAV</button>
+            <button id="download" class="primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download</button>
           </div>
         </div>
         <p id="status" aria-live="polite"></p>

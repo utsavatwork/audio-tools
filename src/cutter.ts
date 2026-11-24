@@ -22,13 +22,13 @@ const fadeOutSec = document.querySelector<HTMLSelectElement>('#fade-out-sec')!
 const timeMsg = document.querySelector<HTMLParagraphElement>('#time-msg')!
 const canvas = document.querySelector<HTMLCanvasElement>('#wave')!
 const playBtn = document.querySelector<HTMLButtonElement>('#play')!
+const playLabel = document.querySelector<HTMLSpanElement>('#play-label')!
 const headEl = document.querySelector<HTMLDivElement>('#head')!
 const posText = document.querySelector<HTMLParagraphElement>('#pos')!
 const setStartBtn = document.querySelector<HTMLButtonElement>('[data-set=start]')!
 const setEndBtn = document.querySelector<HTMLButtonElement>('[data-set=end]')!
-const wavBtn = document.querySelector<HTMLButtonElement>('#export-wav')!
-const mp3Btn = document.querySelector<HTMLButtonElement>('#export-mp3')!
-const kbpsSel = document.querySelector<HTMLSelectElement>('#kbps')!
+const downloadBtn = document.querySelector<HTMLButtonElement>('#download')!
+const formatSel = document.querySelector<HTMLSelectElement>('#format')! // an MP3 bitrate, or "wav"
 const status = document.querySelector<HTMLParagraphElement>('#status')!
 const drop = document.querySelector<HTMLLabelElement>('#drop')!
 const editor = document.querySelector<HTMLDivElement>('#editor')!
@@ -145,9 +145,9 @@ function updateButtons() {
   const ok = hasSelection() && !timeInvalid
   const exportOk = ok && resultLength() >= MIN_SEL_SEC - EPS // removing everything leaves nothing
   playBtn.disabled = !ok && !playing // it's the Stop button while playing
-  playBtn.textContent = playing ? 'Stop' : 'Play'
-  wavBtn.disabled = !exportOk
-  mp3Btn.disabled = !exportOk || encoding
+  playLabel.textContent = playing ? 'Stop' : 'Play'
+  playBtn.classList.toggle('playing', !!playing) // swaps the play and stop icons
+  downloadBtn.disabled = !exportOk || encoding
 }
 
 async function loadFile(file: File) {
@@ -259,45 +259,46 @@ function computePeaks(buf: AudioBuffer) {
   return out
 }
 
+// Colors come from the page's theme (style.css), so light and dark mode both work
+const css = (name: string) => getComputedStyle(canvas).getPropertyValue(name).trim()
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render())
+
 function render() {
   const w = canvas.width, h = canvas.height
   g.clearRect(0, 0, w, h)
+  const [off, on, cut, selBg, fg, danger] =
+    ['--wave-off', '--wave-on', '--wave-cut', '--sel-bg', '--fg', '--danger'].map(css)
+  const sx = Math.round(start * w), ex = Math.round(end * w)
 
-  g.fillStyle = '#646cff'
+  // a faint band behind the selection; red-tinted when it's the part that gets cut
+  g.fillStyle = selBg
+  g.fillRect(sx, 0, ex - sx, h)
+  if (mode === 'remove') {
+    g.save()
+    g.globalAlpha = 0.08
+    g.fillStyle = danger
+    g.fillRect(sx, 0, ex - sx, h)
+    g.restore()
+  }
+
+  // the waveform: strong where it's exported, faint where it isn't. Fades shrink
+  // it, so you see the shape of what you'll get.
+  const dur = audioBuffer?.duration ?? 0
+  const { fin, fout } = audioBuffer ? fadeLens() : { fin: 0, fout: 0 }
+  const fading = !!audioBuffer && !!(fin || fout)
   peaks.forEach((p, x) => {
-    const y1 = ((1 + p.min) / 2) * h
-    const y2 = ((1 + p.max) / 2) * h
+    const inSel = x >= sx && x < ex
+    const kept = mode === 'keep' ? inSel : !inSel
+    const k = fading ? gainAt(((x + 0.5) / w) * dur, 'right') : 1
+    const y1 = ((1 + p.min * k) / 2) * h
+    const y2 = ((1 + p.max * k) / 2) * h
+    g.fillStyle = kept ? on : inSel ? cut : off // Remove mode: the cut part in muted red
     g.fillRect(x, y1, 1, Math.max(1, y2 - y1))
   })
 
-  // dim what won't be exported: outside the selection, or the selection itself
-  g.fillStyle = 'rgba(0,0,0,0.6)'
-  if (mode === 'keep') {
-    g.fillRect(0, 0, start * w, h)
-    g.fillRect(end * w, 0, w - end * w, h)
-  } else {
-    g.fillRect(start * w, 0, (end - start) * w, h)
-    g.fillStyle = 'rgba(229,83,75,0.25)' // and tint it red: this part gets cut
-    g.fillRect(start * w, 0, (end - start) * w, h)
-  }
-
-  // fades: darken from the top and bottom, so the waveform narrows to nothing
-  const { fin, fout } = audioBuffer ? fadeLens() : { fin: 0, fout: 0 }
-  if (audioBuffer && (fin || fout)) {
-    const d = audioBuffer.duration
-    g.fillStyle = 'rgba(0,0,0,0.6)'
-    for (let x = 0; x < w; x++) {
-      const k = gainAt(((x + 0.5) / w) * d, 'right')
-      if (k >= 1) continue
-      const cut = (h * (1 - k)) / 2
-      g.fillRect(x, 0, 1, cut)
-      g.fillRect(x, h - cut, 1, cut)
-    }
-  }
-
-  // handles: 3 CSS px wide, whatever the pixel density
-  const hw = 3 * (window.devicePixelRatio || 1)
-  g.fillStyle = '#ffb454'
+  // handles: 2 CSS px wide, whatever the pixel density
+  const hw = 2 * (window.devicePixelRatio || 1)
+  g.fillStyle = fg
   g.fillRect(start * w - hw / 2, 0, hw, h)
   g.fillRect(end * w - hw / 2, 0, hw, h)
 
@@ -716,7 +717,7 @@ window.addEventListener('keydown', e => {
 
 for (const [box, sel] of [[fadeInBox, fadeInSec], [fadeOutBox, fadeOutSec]] as const) {
   box.addEventListener('change', () => {
-    sel.disabled = !box.checked
+    sel.hidden = !box.checked // the length only shows while the fade is on
     syncPlayback()
     render()
   })
@@ -819,13 +820,19 @@ function exportName(ext: string) {
   return `${baseName}-${mode === 'keep' ? 'trimmed' : 'cut'}.${ext}`
 }
 
-wavBtn.addEventListener('click', () => {
+downloadBtn.addEventListener('click', e => {
+  if (formatSel.value === 'wav') exportWav()
+  else void exportMp3(Number(formatSel.value))
+  releaseFocus(e)
+})
+
+function exportWav() {
   if (!audioBuffer || !commitTyped() || !hasSelection()) return
   const rate = audioBuffer.sampleRate
   const blob = encodeWav(withFades(resultPieces(audioBuffer), rate), rate)
   download(blob, exportName('wav'))
   track('export-wav', { mode, fade: fadeLabel(), length: lengthBucket(resultLength()) })
-})
+}
 
 function encodeWav(pieces: Piece[], rate: number): Blob {
   const ch = pieces[0].length
@@ -881,14 +888,14 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
-mp3Btn.addEventListener('click', async () => {
+async function exportMp3(kbps: number) {
   if (!audioBuffer || encoding || !commitTyped() || !hasSelection()) return
   encoding = true
   updateButtons()
   try {
     const blob = await encodeMp3(
       withFades(resultPieces(audioBuffer), audioBuffer.sampleRate),
-      audioBuffer.sampleRate, Number(kbpsSel.value),
+      audioBuffer.sampleRate, kbps,
       pct => { status.textContent = `Encoding ${pct}%` }
     )
     status.textContent = `Done (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
@@ -896,7 +903,7 @@ mp3Btn.addEventListener('click', async () => {
     track('export-mp3', {
       mode,
       fade: fadeLabel(),
-      kbps: kbpsSel.value,
+      kbps: String(kbps),
       length: lengthBucket(resultLength()),
     })
   } catch {
@@ -906,7 +913,7 @@ mp3Btn.addEventListener('click', async () => {
     encoding = false
     updateButtons()
   }
-})
+}
 
 function toInt16(f: Float32Array, from: number, to: number): Int16Array {
   const out = new Int16Array(to - from)

@@ -24,6 +24,8 @@ npm run build     # type-check and build to dist/
   served at `/audio-cutter`) with its own script in `src/`. Add the page to `vite.config.ts`,
   `public/sitemap.xml` and the home page's tool list.
 - **Test on mobile.** Many people use the site on phones, so check touch and narrow screens.
+- **Follow the design philosophy.** Humble, subtle, aggressively minimalist, quiet, casual.
+  See [docs/design.md](docs/design.md) before changing how anything looks or reads.
 
 ## Analytics
 

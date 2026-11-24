@@ -73,7 +73,7 @@ audio-cutter/       The audio cutter page (served at /audio-cutter)
 privacy.html        Privacy policy
 404.html            Page shown for missing URLs
 vite.config.ts      Multi-page build config (home, audio-cutter, privacy, 404)
-public/             Static files copied as-is: favicon, robots.txt, sitemap.xml, og-image.png
+public/             Static files copied as-is: favicon, phone icon, robots.txt, sitemap.xml, og-image.png (source: docs/og-image.html)
 src/
   home.ts           Home page script
   cutter.ts         Audio cutter: file loading, waveform, selection, playback, WAV/MP3 export
